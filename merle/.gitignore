@@ -1,0 +1,12 @@
+build
+.vscode
+.cache
+res/*.csv
+res/images
+wahData
+tbl/cols
+tbl/dbgen
+tbl/ssb-dbgen
+tbl/bitset
+tbl/wah
+tbl/zipf
