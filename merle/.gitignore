@@ -2,6 +2,7 @@ build
 .vscode
 .cache
 res/*.csv
+res/*.log
 res/images
 wahData
 tbl/cols

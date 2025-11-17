@@ -1,0 +1,6 @@
+build
+.vscode
+.cache
+synth/zfcols
+ssb/20ssbCols
+ssb/100ssbCols

@@ -1,0 +1,68 @@
+import numpy as np
+import sys
+import struct
+
+def generate_zipf_samples(n_samples, s):
+    """Generate samples from Zipf distribution using numpy's built-in function"""
+    # numpy.random.zipf uses parameter 'a' which corresponds to our skewness 's'
+    # It returns 1-based values, so we subtract 1 to make it 0-based
+    samples = np.random.zipf(s, n_samples) - 1
+    return samples
+
+def get_bit_width(maxval):
+    """Determine appropriate bit width based on maxval"""
+    if maxval <= 256:
+        return 8
+    elif maxval <= 65536:
+        return 16
+    elif maxval <= 4294967296:
+        return 32
+    else:
+        return 64
+
+def write_binary_output(values, bit_width, outpath):
+    """Write values to binary file with bit width header"""
+    with open(outpath, 'wb') as f:
+        # Write bit width as first 4 bytes (little-endian uint32)
+        f.write(struct.pack('<I', bit_width))
+
+        # Write values based on bit width
+        if bit_width == 8:
+            values_bytes = values.astype(np.uint8).tobytes()
+        elif bit_width == 16:
+            values_bytes = values.astype(np.uint16).tobytes()
+        elif bit_width == 32:
+            values_bytes = values.astype(np.uint32).tobytes()
+        elif bit_width == 64:
+            values_bytes = values.astype(np.uint64).tobytes()
+
+        f.write(values_bytes)
+
+def main():
+    if len(sys.argv) != 5:
+        print("Usage: python scrapad.py <skewness> <maxval> <nrelem> <outpath>")
+        sys.exit(1)
+
+    try:
+        skewness = float(sys.argv[1])
+        maxval = int(sys.argv[2])
+        nrelem = int(sys.argv[3])
+        outpath = sys.argv[4]
+    except ValueError:
+        print("Error: Invalid arguments. Expected: <float> <int> <int> <string>")
+        sys.exit(1)
+
+    # Determine bit width
+    bit_width = get_bit_width(maxval)
+
+    # Generate Zipf samples
+    samples = generate_zipf_samples(nrelem, skewness)
+
+    # Apply modulo with maxval
+    samples = samples % maxval
+
+    # Write to binary file
+    write_binary_output(samples, bit_width, outpath)
+
+if __name__ == "__main__":
+    main()
