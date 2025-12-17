@@ -35,6 +35,9 @@ void synth_join(const struct synth_schema *dev, size_t factsz, uint64_t fa1low,
 float4 synth_bmp(const struct synth_schema *dat, uint32_t factsz,
                  uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi,
                  uint32_t da1lo, uint32_t da1hi, uint32_t grpout[256], int ty);
+float2 synth_method(const struct synth_schema *dat, uint32_t factsz,
+                    uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo,
+                    uint32_t fa2hi, uint32_t da1lo, uint32_t da1hi);
 void synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
                uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
                uint32_t da1hi);

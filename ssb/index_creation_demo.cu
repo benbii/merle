@@ -90,7 +90,7 @@ void ssb_democreate(const struct ssb_schema *hostdat,
   size_t mybyte = 0, total_wah_bytes = 0;
   float myms = 0.0, wahms = 0.0;
 
-  // 1. Order Date: Hard-coded date bins
+  // 1. Order Date: 4 months per bin, for a total of 18 bins
   {
     uint64_t mins[] = {19920100, 19920500, 19920900, 19930100, 19930500, 19930900,
                        19940100, 19940500, 19940900, 19950100, 19950500, 19950900,
@@ -155,7 +155,7 @@ void ssb_democreate(const struct ssb_schema *hostdat,
     wahms += result.wah_msec;
   }
 
-  // 5. Customer City (via join): 5 bins - USE ACTUAL DIMENSION SIZE
+  // 5. Customer City: 5 bins
   {
     foo result = _helper(dat->loCustKey, dat->custCity, 8, factSz, custDimSize,
                          city_mins, city_maxes, 5);
@@ -167,7 +167,7 @@ void ssb_democreate(const struct ssb_schema *hostdat,
     wahms += result.wah_msec;
   }
 
-  // 6. Part Manufacturer (via join): 20 bins - USE ACTUAL DIMENSION SIZE
+  // 6. Part Manufacturer: 20 bins
   {
     uint64_t mins[20], maxes[20];
     for (size_t i = 0; i < 20; i++) {

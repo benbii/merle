@@ -38,6 +38,17 @@ def write_binary_output(values, bit_width, outpath):
 
         f.write(values_bytes)
 
+def get_dtype(bit_width):
+    """Get numpy dtype for given bit width"""
+    if bit_width == 8:
+        return np.uint8
+    elif bit_width == 16:
+        return np.uint16
+    elif bit_width == 32:
+        return np.uint32
+    else:
+        return np.uint64
+
 def main():
     if len(sys.argv) != 5:
         print("Usage: python scrapad.py <skewness> <maxval> <nrelem> <outpath>")
@@ -54,15 +65,23 @@ def main():
 
     # Determine bit width
     bit_width = get_bit_width(maxval)
+    dtype = get_dtype(bit_width)
 
-    # Generate Zipf samples
-    samples = generate_zipf_samples(nrelem, skewness)
+    # Write in chunks to reduce memory usage
+    chunk_size = 6_000_000
 
-    # Apply modulo with maxval
-    samples = samples % maxval
+    with open(outpath, 'wb') as f:
+        # Write bit width as first 4 bytes (little-endian uint32)
+        f.write(struct.pack('<I', bit_width))
 
-    # Write to binary file
-    write_binary_output(samples, bit_width, outpath)
+        # Generate and write in chunks
+        remaining = nrelem
+        while remaining > 0:
+            current_chunk = min(chunk_size, remaining)
+            samples = generate_zipf_samples(current_chunk, skewness)
+            samples = samples % maxval
+            f.write(samples.astype(dtype).tobytes())
+            remaining -= current_chunk
 
 if __name__ == "__main__":
     main()

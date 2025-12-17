@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-set(WAH_CUDA_ARCH "86" CACHE STRING "CUDA architecture for WAH")
+set(WAH_CUDA_ARCH "native" CACHE STRING "CUDA architecture for WAH")
 project(wahAttempt VERSION 0.0.1 LANGUAGES C CUDA)
 find_package(OpenMP REQUIRED)
 

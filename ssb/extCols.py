@@ -140,7 +140,10 @@ if os.access("./lineorder.tbl", os.R_OK):
     os.makedirs("ssbCols", exist_ok=True)
     # Process lineorder.tbl in chunks
     chunkSz = 5000000 # 5M rows
-    loSuppKey = np.array([], dtype=np.int32)
+    df = pd.read_csv("./supplier.tbl", sep='|', header=None, usecols=[3])
+    # dumpCol(df[3], "./ssbCols/suppCity", True, False, ssbStrLut)
+    suppCity = np.fromiter(map(lambda x: ssbStrLut[x], df[3]), np.uint8)
+    del df
 
     first = True
     for chunk in pd.read_csv("./lineorder.tbl", sep='|', header=None,
@@ -153,7 +156,10 @@ if os.access("./lineorder.tbl", os.R_OK):
         dumpCol(chunk[11], "./ssbCols/loDiscount", False, ssbStrLut, first)
         dumpCol(chunk[12], "./ssbCols/loRevenue", False, ssbStrLut, first)
         dumpCol(chunk[13], "./ssbCols/loSupplyCost", False, ssbStrLut, first)
-        loSuppKey = np.concatenate([loSuppKey, chunk[4].values])
+        with open("./ssbCols/loSuppCity", 'wb' if first else 'ab') as f:
+            if first:
+                f.write(struct.pack('<I', 1))
+            f.write(bytes(suppCity[k - 1] for k in chunk[4]))
         first = False
 
     # df = pd.read_csv("./date.tbl", sep='|', header=None, usecols=[10])
@@ -161,9 +167,6 @@ if os.access("./lineorder.tbl", os.R_OK):
     df = pd.read_csv("./customer.tbl", sep='|', header=None, usecols=(3,7))
     dumpCol(df[3], "./ssbCols/custCity", True, ssbStrLut, True)
     dumpCol(df[7], "./ssbCols/custMktSegment", True, ssbStrLut, True)
-    df = pd.read_csv("./supplier.tbl", sep='|', header=None, usecols=[3])
-    # dumpCol(df[3], "./ssbCols/suppCity", True, False, ssbStrLut)
-    suppCity = df[3].to_numpy()
     df = pd.read_csv("./part.tbl", sep='|', header=None, usecols=(1,4,5,6,7,8))
     dumpCol(df[1], "./ssbCols/partName", True, ssbStrLut, True)
     dumpCol(df[4], "./ssbCols/partMfgr", True, ssbStrLut, True)
@@ -171,14 +174,10 @@ if os.access("./lineorder.tbl", os.R_OK):
     dumpCol(df[6], "./ssbCols/partType", True, ssbStrLut, True)
     dumpCol(df[7], "./ssbCols/partSize", True, ssbStrLut, True)
     dumpCol(df[8], "./ssbCols/partContainer", True, ssbStrLut, True)
-
-    # Create loSuppCity mapping: loSuppCity[i] = suppCity[loSuppKey[i]]
-    # SSB keys are 1-based
-    loSuppCity = np.array([suppCity[key - 1] for key in loSuppKey])
-    dumpCol(pd.Series(loSuppCity), "./ssbCols/loSuppCity", False, ssbStrLut, True)
     exit(0)
 print('Cannot find SSB columns in current dir!')
 exit(10)
+
 
 # TPCH
 '''

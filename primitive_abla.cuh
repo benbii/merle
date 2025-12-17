@@ -8,6 +8,51 @@
 namespace mybmpidx {
 namespace abla {
 
+template <int nt, int vt, typename op_t>
+__global__ void
+method1(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
+  static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
+  __shared__ union {
+    uint idxbuf[3 * nt * vt];
+    uint cta_grp[256]; // expand with dyn shmem lol
+  } shared;
+
+  uint idxwords[vt];
+  const uint base = blockIdx.x * (nt * vt);
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    const uint off = threadIdx.x + k * nt;
+    idxwords[k] = base + off < cuda::ceil_div(data.factsz, 32)
+                      ? data.nochk(base + off, &shared.idxbuf[off * 3]).x : 0;
+  }
+  __syncthreads();
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    shared.cta_grp[i] = 0;
+  __syncthreads();
+
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    while (idxwords[k] != 0) { // diverges
+      // not coalesced due to `32*` in `off`
+      const uint pos = 32 * (base + threadIdx.x + k * nt) + __ffs(idxwords[k]) - 1;
+      idxwords[k] &= (idxwords[k] - 1);
+      // for check, test the __ffs th bit in idxword.y
+      auto [val, grpidx] = op(pos, false);
+      if (grpidx >= nr_grp) continue;
+      unsigned peers = __match_any_sync(__activemask(), grpidx);
+      val = __reduce_add_sync(peers, val);
+      if ((__ffs(peers) - 1) == (threadIdx.x & 31))
+        atomicAdd(&shared.cta_grp[grpidx], val);
+    }
+  }
+  __syncthreads();
+
+  // put value back into global memory
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    if (shared.cta_grp[i] != 0)
+      atomicAdd(out + i, shared.cta_grp[i]);
+}
+
 // An AND query between several columns
 struct ands {
   col col_bmps[MAXCOLS];

@@ -1,6 +1,8 @@
 build
 .vscode
 .cache
-synth/zfcols
-ssb/20ssbCols
-ssb/100ssbCols
+synth/*zfcols
+ssb/*ssbCols
+drawFigs/*.png
+drawFigs/*.pdf
+dbgen-

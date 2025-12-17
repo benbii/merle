@@ -4,8 +4,7 @@ project(mydemo LANGUAGES C CXX CUDA)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
-# Hard-coded CUDA architecture
-set(CMAKE_CUDA_ARCHITECTURES 86)
+set(CMAKE_CUDA_ARCHITECTURES native)
 
 # Find required packages
 find_package(CUDAToolkit REQUIRED)

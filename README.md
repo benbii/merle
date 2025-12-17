@@ -46,9 +46,6 @@ RTScan is extremely VRAM hungry and support conjunctive scans only (not joins).
 The log file `rtscan/log/1.2e8` lists VRAM usage in its various steps, and
 running time for each selectivity.
 
-## MeRLE
+## WAH
 
-Standalone MeRLE results (i.e. those produced in `merle/`) are NOT used in the
-paper. Rather `*/wah_roast.cu` integrates MeRLE with fused bitmap codes, and
-running fused bitmap benchmarks also produces MeRLE (WAH) results.  
-See `merle/` for more.
+Bundled in fused bitmap (see `*/wah_roast.cu`).

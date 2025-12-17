@@ -1,26 +1,14 @@
 CUDA_PATH       ?= /opt/cuda
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
-
-NVCC = nvcc
-
-# SM_TARGETS   = -gencode=arch=compute_52,code=\"sm_52,compute_52\" 
-# SM_DEF     = -DSM520
-
-SM_TARGETS   = -gencode=arch=compute_86,code=\"sm_86,compute_86\" 
-SM_DEF     = -DSM860
-
-# GENCODE_SM50    := -gencode arch=compute_52,code=sm_52
-#GENCODE_SM70    := -gencode arch=compute_70,code=sm_70
-GENCODE_SM86    := -gencode arch=compute_86,code=sm_86
-GENCODE_FLAGS   := $(GENCODE_SM86)
-
-NVCCFLAGS += $(SM_DEF) -Xptxas="-dlcm=cg -v" -lineinfo -Xcudafe -\# 
+NVCC = $(CUDA_BIN_PATH)/nvcc
+# SM_TARGETS   = -gencode=arch=compute_86,code=\"sm_86,compute_86\" 
+SM_TARGETS   = -gencode=arch=compute_120,code=\"sm_120,compute_120\" 
+NVCCFLAGS += -Xptxas="-dlcm=cg -v" -lineinfo -Xcudafe -\# 
 
 SRC = src
 BIN = bin
 OBJ = obj
-
 INCLUDES = -I. -I$(INC)
 
 $(OBJ)/%.o: $(SRC)/%.cu

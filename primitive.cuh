@@ -165,9 +165,10 @@ struct vprg {
   // Assembly-like bitmap query "instruction". It loads and operates on 3
   // "virtual registers", which maps to 3*(vt*nt*4B) shared memory.
   struct instr {
-    ops opcode;
-    uint8_t dstreg;
-    uint8_t src; // also index to memory operand in ASSIGN
+    ops opcode = END;
+    uint8_t dstreg = 0;
+    uint8_t src1 = 0; // also index to memory operand
+    uint8_t src2 = 0;
   };
   // In the end, result must be placed in r0
   // The first instruction is usually ORM to read a memory operand.
@@ -191,13 +192,13 @@ struct vprg {
       if (instr_.opcode == vprg::END) break;
       // NOTE: in real datasets there are virtually no column reuse
       switch (instr_.opcode) {
-      case vprg::AND: myshm[instr_.dstreg] &= myshm[instr_.src]; break;
-      case vprg::OR:  myshm[instr_.dstreg] |= myshm[instr_.src]; break;
+      case vprg::AND: myshm[instr_.dstreg] &= myshm[instr_.src1]; break;
+      case vprg::OR:  myshm[instr_.dstreg] |= myshm[instr_.src1]; break;
 
       case vprg::ANDM: {
         uint dst = myshm[instr_.dstreg], thecol = 0;
         if (dst == 0) break; // 0 words are fairly common
-        const col &memop = col_bmps[instr_.src];
+        const col &memop = col_bmps[instr_.src1];
         #pragma unroll
         for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
           thecol |= __ldcs(&memop.middle[k][wordpos]); // full 1 words are nonexistent
@@ -207,7 +208,7 @@ struct vprg {
 
       case vprg::ORM: {
         uint dst = myshm[instr_.dstreg];
-        const col &memop = col_bmps[instr_.src];
+        const col &memop = col_bmps[instr_.src1];
         #pragma unroll
         for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
           dst |= __ldcs(&memop.middle[k][wordpos]);
@@ -231,13 +232,13 @@ struct vprg {
       switch (instr_.opcode) {
       case vprg::AND:
         // p_dst = p_src & p_prev
-        myshm[instr_.dstreg] &= myshm[instr_.src];
+        myshm[instr_.dstreg] &= myshm[instr_.src1];
         // u_dst = (u_src | u_prev) & p_dst
-        (myshm[instr_.dstreg + 3] |= myshm[instr_.src + 3]) &= myshm[instr_.dstreg];
+        (myshm[instr_.dstreg + 3] |= myshm[instr_.src1 + 3]) &= myshm[instr_.dstreg];
         break;
       case vprg::OR: {
-        const uint psrc = myshm[instr_.src], pprev = myshm[instr_.dstreg];
-        const uint usrc = myshm[instr_.src + 3], csrc = psrc & ~usrc;
+        const uint psrc = myshm[instr_.src1], pprev = myshm[instr_.dstreg];
+        const uint usrc = myshm[instr_.src1 + 3], csrc = psrc & ~usrc;
         // Uncertain rows after this column operation are either previously
         // uncertain and remain unconfirmed this column (~csrc), or unconfirmed
         // this column and not included beforehand.
@@ -252,7 +253,7 @@ struct vprg {
       case vprg::ANDM: {
         uint p_dst = myshm[instr_.dstreg];
         if (p_dst == 0) break; // nothing is possible
-        const col &memop = this->col_bmps[instr_.src];
+        const col &memop = this->col_bmps[instr_.src1];
         uint c_src = 0,
              u_src = (memop.leftmost ? __ldcs(&memop.leftmost[wordpos]) : 0) |
                      (memop.rightmost ? __ldcs(&memop.rightmost[wordpos]) : 0);
@@ -271,7 +272,7 @@ struct vprg {
       }
 
       case vprg::ORM: {
-        const col &memop = this->col_bmps[instr_.src];
+        const col &memop = this->col_bmps[instr_.src1];
         uint c_src = 0,
              u_src = (memop.leftmost ? __ldcs(&memop.leftmost[wordpos]) : 0) |
                      (memop.rightmost ? __ldcs(&memop.rightmost[wordpos]) : 0);
@@ -320,7 +321,7 @@ vprg_grpby(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
                       ? (chk ? data.chk(base + off, &shared.idxbuf[off * 6])
                              : data.nochk(base + off, &shared.idxbuf[off * 3]))
                       : make_uint2(0, 0);
-    // compiler should be smart enough to eliminate idxwords[*].y on nochk
+    // compiler is smart enough to eliminate idxwords[*].y on nochk
   }
   __syncthreads();
 

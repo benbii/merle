@@ -29,7 +29,7 @@ static size_t __ldsynth(void **ptr, const char *filename, const char *dirname,
   *ptr = malloc(sz);
   assert(*ptr != NULL);
   size_t read_sz = fread(*ptr, 1, sz, fp);
-  assert(read_sz == sz);
+  if (read_sz != sz) exit(66);
   fclose(fp);
   return sz;
 }
@@ -37,7 +37,8 @@ static size_t __ldsynth(void **ptr, const char *filename, const char *dirname,
 static void* __cum(size_t sz) {
   void *bruh;
   cudaError_t e = cudaMalloc(&bruh, sz);
-  assert(e == cudaSuccess);
+  if (e != cudaSuccess)
+    exit(fprintf(stderr, __FILE__ " cuda oom"));
   return bruh;
 }
 
@@ -188,19 +189,32 @@ bool synth_demoall(const char *synthDirname) {
   };
   const double skews[] = {1.04, 1.04, 1.08, 1.08, 1.12,
                           1.12, 1.16, 1.16, 1.2,  1.2};
-  cudaEvent_t start, stop; float msec;
-  cudaEventCreate(&start); cudaEventCreate(&stop);
-  puts("\n\nSkew\tBitW\tSeletiv\tJoin\tPerfect\tManyOrs\tCandChk"
+  char case_dir[512];
+
+  puts("\n\nSeletiv\tMethod1\tMethod2");
+  // Method 1 vs. 2; skewness 1.04, selectivity 1/{128,64,32,16}
+  sprintf(case_dir, "%s/%s", synthDirname, cases[1]);
+  size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
+  double *win = window_zipf(skews[1], 1024, 60);
+  for (double sel = 0.01; sel <= 0.08; sel += 0.01) {
+    uint64_t low = 0, hi = 60;
+    while (win[low] > sel) ++low, ++hi;
+    float2 times = synth_method(&dev_dat, factSz, low, hi, low, hi, low, hi);
+    printf("%.5f\t%.4f\t%.4f\n", sel, times.x, times.y);
+    fflush(stdout);
+  }
+  free(win);
+  synth_free(&host_dat, &dev_dat);
+
+  puts("\nSkew\tBitW\tSeletiv\tJoin\tPerfect\tManyOrs\tCandChk"
        "\tPftStg1\tPftStg2\tPftStg3"
        "\tOrsStg1\tOrsStg2\tOrsStg3"
        "\tChkStg1\tChkStg2\tChkStg3\tWAH");
-
   for (size_t i = 0; i < 10; ++i) {
     // Construct directory path for this case
-    char case_dir[512];
     sprintf(case_dir, "%s/%s", synthDirname, cases[i]);
-    size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
-    double *win = window_zipf(skews[i], 1024, 60);
+    factSz = synth_load(&host_dat, &dev_dat, case_dir);
+    win = window_zipf(skews[i], 1024, 60);
 
     // Run on selectivity 1/{128,64,32,16,8}
     for (double sel = 1.0/128.0; sel <= 1.0/8.0; sel *= 2.0) {
@@ -214,16 +228,6 @@ bool synth_demoall(const char *synthDirname) {
       // Run join on host once and save result to hostres (no timing)
       synth_ref(&host_dat, factSz, low, hi, low, hi, low, hi, hostres);
 
-      // for (int ty = -1; ty < 3; ++ty) {
-      //   cudaEventRecord(start, 0);
-      //   synth_bmp(&dev_dat, factSz, low, hi, low, hi, low, hi, xfertmp, ty);
-      //   cudaEventRecord(stop, 0);
-      //   cudaEventSynchronize(stop);
-      //   cudaEventElapsedTime(&msec, start, stop);
-      //   // index creation plus other things are included lol
-      //   printf("\t%.4f", msec / 103.0);
-      //   if (!_bruh(hostres, xfertmp)) return false;
-      // }
       for (int ty = -1; ty < 6; ++ty) {
         float4 bruh =
             synth_bmp(&dev_dat, factSz, low, hi, low, hi, low, hi, xfertmp, ty);
@@ -241,6 +245,5 @@ bool synth_demoall(const char *synthDirname) {
     free(win);
     synth_free(&host_dat, &dev_dat);
   }
-  cudaEventDestroy(start); cudaEventDestroy(stop);
   return true;
 }

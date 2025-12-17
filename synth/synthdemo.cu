@@ -5,8 +5,9 @@ using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
 
 static __device__ uint2 _op(uint i, synth_schema dat, uint64_t fa1low,
-uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi,
-                           uint64_t da1low, uint64_t da1hi, bool chk) {
+                            uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi,
+                            uint64_t da1low, uint64_t da1hi, bool chk) {
+  // factattr support 8 16 32 64b but we only use 16 and 32
   uint2 ret = {1, ELIMINATED};
   if (chk) {
     uint64_t factAttr1Val = 0, factAttr2Val = 0;
@@ -87,9 +88,9 @@ float4 synth_bmp(const synth_schema *dat, uint factsz, uint fa1lo,
               .dimsz = {nodim, nodim, factsz / 100},
               .fk = {nullptr, nullptr, dat->fkey},
               .attr = {dat->factattr1, dat->factattr2, dat->dimattr1}};
-  vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0}, {vprg::ORM, 0, 1}, {vprg::ANDM, 0, 2},
-      {vprg::END, 0, 0}, {vprg::END, 0, 0}, {vprg::END, 0, 0},
+  const vprg::instr instrs[MAXNINSTR] = {
+      {vprg::ORM, 0, 0, 0}, {vprg::ORM, 0, 1, 0}, {vprg::ANDM, 0, 2, 0},
+      {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0},
   };
   vprg p = ty % 3 == 0 ? r.perfect(instrs)
                        : (ty % 3 == 1 ? r.many_or(instrs) : r.candchk(instrs));
@@ -131,4 +132,65 @@ float4 synth_bmp(const synth_schema *dat, uint factsz, uint fa1lo,
   p.release();
   cudaEventDestroy(start); cudaEventDestroy(stop);
   return bar;
+}
+
+float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
+                 uint fa1hi, uint fa2lo, uint fa2hi, uint da1lo,
+                 uint da1hi) {
+  float2 ret = {0.0f, 0.0f};
+  float elapsed;
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start); cudaEventCreate(&stop);
+
+  uint *grpout;
+  cudaMalloc(&grpout, 512 * sizeof(uint32_t));
+
+  recipe r = {.factsz = factsz, .nbit = {dat->bitwidth, dat->bitwidth, 32},
+              .min = {fa1lo, fa2lo, da1lo}, .max = {fa1hi, fa2hi, da1hi},
+              .dimsz = {nodim, nodim, factsz / 100},
+              .fk = {nullptr, nullptr, dat->fkey},
+              .attr = {dat->factattr1, dat->factattr2, dat->dimattr1}};
+  const vprg::instr instrs[MAXNINSTR] = {
+      {vprg::ORM, 0, 0, 0}, {vprg::ORM, 0, 1, 0}, {vprg::ANDM, 0, 2, 0},
+      {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0},
+  };
+  vprg p = r.perfect(instrs);
+  auto op = [=, dat = *dat] __device__(uint i, bool c) {
+    return _op(i, dat, fa1lo, fa1hi, fa2lo, fa2hi, da1lo, da1hi, c);
+  };
+
+  // Method 1: direct while loop -> writes to grpout[0:256]
+  for (size_t d = 0; d < ndup; ++d) {
+    cudaMemset(grpout, 0, 256 * sizeof(uint32_t));
+    cudaEventRecord(start);
+    abla::method1<nt, vt><<<ceil_div(factsz, nv32), nt>>>(p, grpout, 256, op);
+    cudaEventRecord(stop); cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+    ret.x += elapsed;
+  }
+  ret.x /= ndup;
+
+  // Method 2: block scan + parallel -> writes to grpout[256:512]
+  for (size_t d = 0; d < ndup; ++d) {
+    cudaMemset(grpout + 256, 0, 256 * sizeof(uint32_t));
+    cudaEventRecord(start);
+    vprg_grpby<nt, vt, vt0, false>
+        <<<ceil_div(factsz, nv32), nt>>>(p, grpout + 256, 256, op);
+    cudaEventRecord(stop); cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+    ret.y += elapsed;
+  }
+  ret.y /= ndup;
+
+  uint32_t hostbuf[512];
+  cudaMemcpy(hostbuf, grpout, 512 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+  for (int i = 0; i < 256; ++i)
+    if (hostbuf[i] != hostbuf[i + 256])
+      exit(fprintf(stderr, "Method 1 vs 2 mismatch at %d: %u != %u\n",
+              i, hostbuf[i], hostbuf[i + 256]));
+
+  cudaFree(grpout);
+  p.release();
+  cudaEventDestroy(start); cudaEventDestroy(stop);
+  return ret;
 }
