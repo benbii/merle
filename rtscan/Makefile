@@ -21,8 +21,11 @@ rtscan-interval-spacing-srcs = $(wildcard $(rtscan-interval-spacing-src)/*)
 rtc3-srcs = $(wildcard $(rtc3-src)/*)
 rtc1-srcs = $(wildcard $(rtc1-src)/*)
 
-CUDA_INCLUDE = -I/opt/cuda/include
-CUDA_LIB = -L/opt/cuda/lib64
+CUDA_PATH       ?= /opt/cuda
+CUDA_INCLUDE    ?= -I$(CUDA_PATH)/include
+CUDA_LIB        ?= -L$(CUDA_PATH)/lib64
+CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
+NVCC            ?= $(CUDA_PATH)/bin/nvcc
 LDFLAGS = -L. $(rt-scan-libs) $(CUDA_LIB) -ldl -pthread -fopenmp -lcudart -lcuda -Wl,-rpath='$(optix-lib)'
 LDFLAGS-rtc3 = -L. $(rtc3-libs) $(CUDA_LIB) -ldl -pthread -fopenmp -lcudart -lcuda -Wl,-rpath='$(optix-lib)'
 LDFLAGS-rtc1 = -L. $(rtc1-libs) $(CUDA_LIB) -ldl -pthread -fopenmp -lcudart -lcuda -Wl,-rpath='$(optix-lib)'
@@ -82,13 +85,13 @@ rtc1: rtc1.cpp rt.h ./bin/librt_cuda.a timer.h $(optix-lib)/librtc1.a
 	g++ $^ -o ./bin/$@ $(CUDA_INCLUDE) $(LDFLAGS-rtc1) -mavx2 -march=native -DD_GLIBCXX_PARALLEL -DDATA_N=$(DATA_N) -DDISTRIBUTION=$(DISTRIBUTION) $(GPLUS)
 
 ./bin/rt_cuda.o: rt_cuda.cu
-	nvcc -c $^ -o $@ -DDATA_N=$(DATA_N) $(GPLUS)
+	$(NVCC) -c $^ -o $@ -DDATA_N=$(DATA_N) $(GPLUS)
 
 ./bin/librt_cuda.a: ./bin/rt_cuda.o
 	ar cr $@ $^
 
 ./bin/cuda_and.o: cuda_and.cu
-	nvcc -c $^ -o $@ -DDATA_N=$(DATA_N) $(GPLUS)
+	$(NVCC) -c $^ -o $@ -DDATA_N=$(DATA_N) $(GPLUS)
 
 ./bin/libcuda_and.a: ./bin/cuda_and.o
 	ar cr $@ $^

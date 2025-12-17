@@ -1,7 +1,7 @@
 #!/bin/bash
 set -xe
 cd "$(dirname $0)/.."
-mkdir -p log
+mkdir -p log optix-scan/build bin
 
 make clean
 make -j16 rtscan DATA_N=1e8 VAREA_N=96 DEBUG_ISHIT_CMP_RAY=0 DEBUG_INFO=0 DISTRIBUTION=0 ENCODE=0 BUILD_TYPE=Release
