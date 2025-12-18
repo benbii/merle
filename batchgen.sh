@@ -30,12 +30,13 @@ cmake -S. -Bbuild -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMM
 ninja -C build
 clang ssb-dbgen-lite.c -O3 -march=native -o build/dbgen-lite -lm -fopenmp
 if [ "$1" -eq 20 ]; then
-  bash rtscan/script/run.sh &
-  make -C crystal/test/loader -j32
+  #bash rtscan/script/run.sh &
+  make -C crystal/test/ssb/loader -j32
   make -C crystal -j32
   mkdir -p crystal/test/ssb/data
-  cp date.tbl.xz ssb/20ssbCols
   ionice -c 2 build/dbgen-lite -s 20 -d ssb/20ssbCols -b -t
+  cp date.tbl.xz ssb/20ssbCols
+  unxz ssb/20ssbCols/date.tbl.xz
   ln -s "$(realpath ssb/20ssbCols)" crystal/test/ssb/data/s20
   echo -e "Case\tCrystal" >drawFigs/crystal.txt
   pushd crystal/test
