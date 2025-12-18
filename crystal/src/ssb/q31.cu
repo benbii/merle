@@ -263,7 +263,7 @@ int main(int argc, char** argv)
     total_time += time_query;
   }
 
-  cout << "31\t" << (total_time / num_trials) << endl;
+  cout << "SSB31\t" << (total_time / num_trials) << endl;
 
   return 0;
 }

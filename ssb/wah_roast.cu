@@ -257,6 +257,7 @@ void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
     printf("S13\t%.4f\t0.35303\n", a); // Pathetic 🫩.
   } catch (std::runtime_error &e) {
     poolSz += 1ul << 30;
+    fprintf(stderr, "trying %zu GiB VRAM\n", poolSz >> 30);
     return ssb_demowah(hostdat, dat, factSz);
   } catch (mgpu::cuda_exception_t &e) {
     fprintf(stderr, "Skipping WAH cause it sucks: %s\n", e.what());

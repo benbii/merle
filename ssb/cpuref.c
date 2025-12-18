@@ -7,16 +7,17 @@
 
 static size_t __ldssb(void **ptr, const char *filename, const char *dirname,
                       size_t sz) {
-  // sz = 0 => use ftell
+  // sz = 0 => use ftell (minus 4-byte header)
   char filepath[256];
   sprintf(filepath, "%s/%s", dirname, filename);
   FILE *fp = fopen(filepath, "rb");
   assert(fp != NULL);
   if (sz == 0) {
     fseek(fp, 0, SEEK_END);
-    sz = ftell(fp);
+    sz = ftell(fp) - 4;  // exclude 4-byte element size header
     rewind(fp);
   }
+  fseek(fp, 4, SEEK_SET);  // skip 4-byte element size header
   *ptr = malloc(sz);
   if (ptr == NULL) exit(fputs(__FILE__"host oom\n", stderr));
   size_t read_sz = fread(*ptr, 1, sz, fp);

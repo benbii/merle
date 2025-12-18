@@ -117,16 +117,18 @@ d = ['turquoise', 'deep', 'frosted', 'seashell', 'blanched', 'almond', 'lace',
      'magenta', 'lavender', 'rose', 'misty', 'spring', 'navy', 'purple',
      'khaki', 'thistle', 'firebrick', 'lawn', 'dim', 'chocolate', 'snow',
      'metallic', 'lemon', 'plum', 'brown', 'sienna', 'papaya', 'chartreuse',
-     'dark', 'floral', 'peru', 'salmon', 'orchid', 'maroon', 'goldenrod']
+     'dark', 'floral', 'peru', 'salmon', 'orchid', 'maroon', 'goldenrod',
+     'toad', 'toadette']
+assert(len(d) == 94)
 for i, e in enumerate(d):
     ssbStrLut[e] = i
     for j, f in enumerate(d):
-        ssbStrLut[f'{e} {f}'] = (i<<8) + j
+        ssbStrLut[f'{e} {f}'] = (i * 94) + j
 
 for i, e in enumerate(["PKG", "CASE", "DRUM", "BAG", "PACK", "CAN", "BOX", "JAR"]):
     for j, f in enumerate(["JUMBO", "LG", "WRAP", "MED", "SM"]):
-        ssbStrLut[f'{f} {e}'] = (i<<4) + j
-        tpchStrLut[f'{f} {e}'] = (i<<4) + j
+        ssbStrLut[f'{f} {e}'] = i * 8 + j
+        tpchStrLut[f'{f} {e}'] = i * 8 + j
 for i, e in enumerate(["PROMO", "LARGE", "STANDARD", "SMALL", "MEDIUM", "ECONOMY"]):
     for j, f in enumerate(["POLISHED", "PLATED", "POLISHED", "BRUSHED", "BURNISHED", "ANODIZED"]):
         for k, g in enumerate(["COPPER", "BRASS", "TIN", "STEEL", "COPPER", "NICKEL"]):
