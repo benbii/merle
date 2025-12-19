@@ -168,13 +168,13 @@ void synth_ref(const struct synth_schema *dat, size_t factsz, uint64_t fa1low,
   }
 }
 
-static bool _bruh(const uint32_t* hostres, const uint32_t* xfertmp) {
+static bool _bruh(const uint32_t* hostres, const uint32_t* xfertmp, int a) {
   uint32_t devres[256];
   cudaMemcpy(devres, xfertmp, 256 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
   for (size_t j = 0; j < 256; ++j) {
     if (hostres[j] != devres[j]) {
-      fprintf(stderr, "Mismatch at %zu, h=%u, d=%u\n",
-              j, hostres[j], devres[j]);
+      fprintf(stderr, "Mismatch at %zu, h=%u, d=%u, ty=%d\n",
+              j, hostres[j], devres[j], a);
       return false;
     }
   }
@@ -189,6 +189,9 @@ bool synth_demoall(const char *synthDirname) {
   };
   const double skews[] = {1.04, 1.04, 1.08, 1.08, 1.12,
                           1.12, 1.16, 1.16, 1.2,  1.2};
+  const double colsel[7] = {.02, .04, .06, .09, .12, .18, .25};
+  const double fulsel[7] = {1 / 512.0, 1 / 256.0, 1 / 128.0, 1 / 64.0,
+                            1 / 32.0,  1 / 16.0,  1 / 8.0};
   char case_dir[512];
 
   puts("\n\nSeletiv\tMethod1\tMethod2");
@@ -196,11 +199,11 @@ bool synth_demoall(const char *synthDirname) {
   sprintf(case_dir, "%s/%s", synthDirname, cases[1]);
   size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
   double *win = window_zipf(skews[1], 1024, 60);
-  for (double sel = 0.01; sel <= 0.08; sel += 0.01) {
+  for (size_t i = 0; i < 6; ++i) {
     uint64_t low = 0, hi = 60;
-    while (win[low] > sel) ++low, ++hi;
+    while (win[low] > colsel[i]) ++low, ++hi;
     float2 times = synth_method(&dev_dat, factSz, low, hi, low, hi, low, hi);
-    printf("%.5f\t%.4f\t%.4f\n", sel, times.x, times.y);
+    printf("%.5f\t%.4f\t%.4f\n", fulsel[i], times.x, times.y);
     fflush(stdout);
   }
   free(win);
@@ -216,12 +219,12 @@ bool synth_demoall(const char *synthDirname) {
     factSz = synth_load(&host_dat, &dev_dat, case_dir);
     win = window_zipf(skews[i], 1024, 60);
 
-    // Run on selectivity 1/{128,64,32,16,8}
-    for (double sel = 1.0/128.0; sel <= 1.0/8.0; sel *= 2.0) {
+    // Run on selectivity 1/{256,128,64,32,16,8}
+    for (size_t o = 1; o < 6; o++) {
       // Find the first x at which [x, x+60) has prob <= sel
       uint64_t low = 0, hi = 60;
-      while (win[low] > sel) ++low, ++hi;
-      printf("%.2f\t%s\t%.5f", skews[i], cases[i] + 3, sel);
+      while (win[low] > colsel[o]) ++low, ++hi;
+      printf("%.2f\t%s\t%.5f", skews[i], cases[i] + 3, fulsel[o]);
 
       uint32_t hostres[256], *xfertmp = __cum(sizeof(hostres) + 8);
       // No memset: synth_* functions do this
@@ -232,7 +235,7 @@ bool synth_demoall(const char *synthDirname) {
         float4 bruh =
             synth_bmp(&dev_dat, factSz, low, hi, low, hi, low, hi, xfertmp, ty);
         printf(ty >= 3 ? "\t%.4f\t%.4f\t%.4f" : "\t%.4f", bruh.x, bruh.y, bruh.z);
-        if (!_bruh(hostres, xfertmp)) return false;
+        if (!_bruh(hostres, xfertmp, ty)) return false;
       }
 
       cudaFree(xfertmp);

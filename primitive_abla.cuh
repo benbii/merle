@@ -8,22 +8,24 @@
 namespace mybmpidx {
 namespace abla {
 
-template <int nt, int vt, typename op_t>
+template <int nt, int vt, bool chk = false, typename op_t>
 __global__ void
 method1(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
   static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
   __shared__ union {
-    uint idxbuf[3 * nt * vt];
+    uint idxbuf[(chk ? 6 : 3) * nt * vt];
     uint cta_grp[256]; // expand with dyn shmem lol
   } shared;
 
-  uint idxwords[vt];
+  uint2 idxwords[vt];
   const uint base = blockIdx.x * (nt * vt);
   #pragma unroll
   for (uint k = 0; k < vt; ++k) {
     const uint off = threadIdx.x + k * nt;
     idxwords[k] = base + off < cuda::ceil_div(data.factsz, 32)
-                      ? data.nochk(base + off, &shared.idxbuf[off * 3]).x : 0;
+                      ? (chk ? data.chk(base + off, &shared.idxbuf[off * 6])
+                             : data.nochk(base + off, &shared.idxbuf[off * 3]))
+                      : make_uint2(0, 0);
   }
   __syncthreads();
   for (uint i = threadIdx.x; i < nr_grp; i += nt)
@@ -32,18 +34,98 @@ method1(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
 
   #pragma unroll
   for (uint k = 0; k < vt; ++k) {
-    while (idxwords[k] != 0) { // diverges
+    while (idxwords[k].x != 0) { // diverges
       // not coalesced due to `32*` in `off`
-      const uint pos = 32 * (base + threadIdx.x + k * nt) + __ffs(idxwords[k]) - 1;
-      idxwords[k] &= (idxwords[k] - 1);
-      // for check, test the __ffs th bit in idxword.y
-      auto [val, grpidx] = op(pos, false);
+      const uint bpos = __ffs(idxwords[k].x) - 1;
+      const uint pos = 32 * (base + threadIdx.x + k * nt) + bpos;
+      idxwords[k].x &= (idxwords[k].x - 1);
+      // for check, test the bpos-th bit in idxword.y
+      auto [val, grpidx] = op(pos, chk ? bool(idxwords[k].y & (1 << bpos)) : false);
       if (grpidx >= nr_grp) continue;
       unsigned peers = __match_any_sync(__activemask(), grpidx);
       val = __reduce_add_sync(peers, val);
       if ((__ffs(peers) - 1) == (threadIdx.x & 31))
         atomicAdd(&shared.cta_grp[grpidx], val);
     }
+  }
+  __syncthreads();
+
+  // put value back into global memory
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    if (shared.cta_grp[i] != 0)
+      atomicAdd(out + i, shared.cta_grp[i]);
+}
+
+template <int nt, int vt, int vt0, bool chk, typename op_t>
+__global__ void method2(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
+  static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
+  static_assert(vt0 < 32, "must have <32 vt0");
+  __shared__ union {
+    uint idxbuf[(chk ? 6 : 3) * nt * vt];
+    typename cub::BlockScan<uint, nt>::TempStorage scan_temp;
+    uint onelist[nt * vt0];
+    uint cta_grp[0]; // expand with dyn shmem lol
+  } shared;
+
+  uint2 idxwords[vt];
+  const uint base = blockIdx.x * (nt * vt);
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    const uint off = threadIdx.x + k * nt;
+    idxwords[k] = base + off < cuda::ceil_div(data.factsz, 32)
+                      ? (chk ? data.chk(base + off, &shared.idxbuf[off * 6])
+                             : data.nochk(base + off, &shared.idxbuf[off * 3]))
+                      : make_uint2(0, 0);
+    // compiler is smart enough to eliminate idxwords[*].y on nochk
+  }
+  __syncthreads();
+
+  uint my_off, tot_1, idxword_popc = 0;
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k)
+    idxword_popc += __popc(idxwords[k].x);
+  cub::BlockScan<uint, nt>(shared.scan_temp)
+    .ExclusiveSum(idxword_popc, my_off, tot_1);
+  __syncthreads();
+
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    while (idxwords[k].x != 0) {
+      const uint idxword_pos = base + threadIdx.x + k * nt;
+      const uint bpos = __ffs(idxwords[k].x) - 1, row_id = idxword_pos * 32 + bpos;
+      if constexpr (chk)
+        shared.onelist[my_off++] =
+            (idxwords[k].y & (1 << bpos)) ? (0x80000000 | row_id) : row_id;
+      else
+        shared.onelist[my_off++] = row_id;
+      idxwords[k].x &= idxwords[k].x - 1;
+    }
+  } // `idxwords` retire here
+  __syncthreads();
+
+  // All threads refer to `vt` values in the onelist
+  uint my_1[vt0];
+  #pragma unroll
+  for (uint i = 0, j = threadIdx.x; i < vt0; j += nt, i += 1) {
+    if (j >= tot_1) break;
+    my_1[i] = shared.onelist[j];
+  }
+  __syncthreads();
+
+  // 1 values now in registers. Do actual group-by now.
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    shared.cta_grp[i] = 0;
+  __syncthreads();
+  #pragma unroll
+  for (uint i = 0, j = threadIdx.x; i < vt0; j += nt, i += 1) {
+    if (j >= tot_1) break;
+    auto [val, grpidx] =
+        op(my_1[i] & 0x7fffffff, chk ? bool(my_1[i] & 0x80000000) : false);
+    if (grpidx >= nr_grp) continue;
+    unsigned peers = __match_any_sync(__activemask(), grpidx);
+    val = __reduce_add_sync(peers, val);
+    if ((__ffs(peers) - 1) == (threadIdx.x & 31))
+      atomicAdd(&shared.cta_grp[grpidx], val);
   }
   __syncthreads();
 

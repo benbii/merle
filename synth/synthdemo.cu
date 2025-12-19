@@ -52,8 +52,17 @@ static __device__ uint2 _op(uint i, synth_schema dat, uint64_t fa1low,
   return ret;
 }
 
+#if __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 900 || __CUDA_ARCH__ == 1000
+static constexpr size_t nt = 256, vt = 3, vt0 = 19, ndup = 100;
+static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
+static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
+#else
 static constexpr size_t nt = 256, vt = 3, vt0 = 12, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
+// Program + candchk is highly shmem intensive.
+// Go for a less aggressive `vt` choice.
+static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
+#endif
 
 void synth_join(const synth_schema *dat, size_t factsz, uint64_t fa1lo,
                uint64_t fa1hi, uint64_t fa2lo, uint64_t fa2hi, uint64_t da1lo,
@@ -89,8 +98,7 @@ float4 synth_bmp(const synth_schema *dat, uint factsz, uint fa1lo,
               .fk = {nullptr, nullptr, dat->fkey},
               .attr = {dat->factattr1, dat->factattr2, dat->dimattr1}};
   const vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0, 0}, {vprg::ORM, 0, 1, 0}, {vprg::ANDM, 0, 2, 0},
-      {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0},
+      {vprg::ORM, 0, 0}, {vprg::ORM, 0, 1}, {vprg::ANDM, 0, 2},
   };
   vprg p = ty % 3 == 0 ? r.perfect(instrs)
                        : (ty % 3 == 1 ? r.many_or(instrs) : r.candchk(instrs));
@@ -99,7 +107,9 @@ float4 synth_bmp(const synth_schema *dat, uint factsz, uint fa1lo,
   if (d_possi == nullptr) {
     cudaMalloc(&d_possi, ceil_div(factsz, 32) * sizeof(uint32_t));
     cudaMalloc(&d_uncert, ceil_div(factsz, 32) * sizeof(uint32_t));
-    cudaMalloc(&d_onelist, ceil_div(factsz, 10) * sizeof(uint32_t));
+    cudaMalloc(&d_onelist, ceil_div(factsz, 4) * sizeof(uint32_t));
+    if (!d_possi || !d_uncert || !d_onelist)
+      exit(fprintf(stderr, __FILE__ " CUDA OOM\n"));
   }
   auto op = [=, dat = *dat] __device__(uint i, bool c) {
     return _op(i, dat, fa1lo, fa1hi, fa2lo, fa2hi, da1lo, da1hi, c);
@@ -115,15 +125,15 @@ float4 synth_bmp(const synth_schema *dat, uint factsz, uint fa1lo,
       cudaEventElapsedTime(&foo.x, start, stop);
     } else if (ty == 2) {
       cudaEventRecord(start);
-      vprg_grpby<nt, vt, vt0, true>
-          <<<ceil_div(factsz, nv32), nt>>>(p, grpout, 256, op);
+      vprg_grpby<nt, cp_vt, vt0, true>
+          <<<ceil_div(factsz, cp_nv32), nt>>>(p, grpout, 256, op);
       cudaEventRecord(stop); cudaEventSynchronize(stop);
       cudaEventElapsedTime(&foo.x, start, stop);
     } else if (ty == 3 || ty == 4) {
-      foo = abla::nofuse_abla<nt, vt, vt, vt, false>(
+      foo = abla::nofuse_abla<nt, cp_vt, vt, vt, false>(
           p, 256, op, grpout, d_possi, d_uncert, d_onelist);
     } else if (ty == 5) {
-      foo = abla::nofuse_abla<nt, vt, vt, vt, true>(
+      foo = abla::nofuse_abla<nt, cp_vt, vt, vt, true>(
           p, 256, op, grpout, d_possi, d_uncert, d_onelist);
     }
     bar.x += foo.x; bar.y += foo.y; bar.z += foo.z; bar.w += foo.w;
@@ -174,7 +184,7 @@ float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
   for (size_t d = 0; d < ndup; ++d) {
     cudaMemset(grpout + 256, 0, 256 * sizeof(uint32_t));
     cudaEventRecord(start);
-    vprg_grpby<nt, vt, vt0, false>
+    abla::method2<nt, vt, vt0, false>
         <<<ceil_div(factsz, nv32), nt>>>(p, grpout + 256, 256, op);
     cudaEventRecord(stop); cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);

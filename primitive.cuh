@@ -333,11 +333,38 @@ vprg_grpby(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
     .ExclusiveSum(idxword_popc, my_off, tot_1);
   __syncthreads();
 
+  if (tot_1 >= nt * vt0) { // fallback to method 1
+    for (uint i = threadIdx.x; i < nr_grp; i += nt)
+      shared.cta_grp[i] = 0;
+    __syncthreads();
+    #pragma unroll
+    for (uint k = 0; k < vt; ++k) {
+      while (idxwords[k].x != 0) {
+        const uint bpos = __ffs(idxwords[k].x) - 1;
+        const uint pos = 32 * (base + threadIdx.x + k * nt) + bpos;
+        idxwords[k].x &= (idxwords[k].x - 1);
+        auto [val, grpidx] =
+            op(pos, chk ? bool(idxwords[k].y & (1 << bpos)) : false);
+        if (grpidx >= nr_grp) continue;
+        unsigned peers = __match_any_sync(__activemask(), grpidx);
+        val = __reduce_add_sync(peers, val);
+        if ((__ffs(peers) - 1) == (threadIdx.x & 31))
+          atomicAdd(&shared.cta_grp[grpidx], val);
+      }
+    }
+    __syncthreads();
+    for (uint i = threadIdx.x; i < nr_grp; i += nt)
+      if (shared.cta_grp[i] != 0)
+        atomicAdd(out + i, shared.cta_grp[i]);
+    return;
+  }
+
   #pragma unroll
   for (uint k = 0; k < vt; ++k) {
     while (idxwords[k].x != 0) {
       const uint idxword_pos = base + threadIdx.x + k * nt;
-      const uint bpos = __ffs(idxwords[k].x) - 1, row_id = idxword_pos * 32 + bpos;
+      const uint bpos = __ffs(idxwords[k].x) - 1;
+      const uint row_id = idxword_pos * 32 + bpos;
       if constexpr (chk)
         shared.onelist[my_off++] =
             (idxwords[k].y & (1 << bpos)) ? (0x80000000 | row_id) : row_id;

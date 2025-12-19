@@ -10,6 +10,13 @@ static uint *d_possi, *d_uncert, *d_onelist;
 
 static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
+#if __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 900 || __CUDA_ARCH__ == 1000
+static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
+#else
+// Program + candchk is highly shmem intensive.
+// Go for a less aggressive `vt` choice.
+static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
+#endif
 
 #define PLEASE \
   cudaEvent_t start, stop; float msec; \
@@ -38,10 +45,10 @@ static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
     float4 foo, bar = {0.0,0.0,0.0,0.0};\
     for (size_t d = 0; d < ndup; ++d) { \
       if (i == 2) \
-        foo = nofuse_abla<nt, vt, vt, vt, true>( \
+        foo = nofuse_abla<nt, cp_vt, vt, vt, true>( \
           p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
       else \
-        foo = nofuse_abla<nt, vt, vt, vt, false>( \
+        foo = nofuse_abla<nt, cp_vt, vt, vt, false>( \
           p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
       bar.x += foo.x; bar.y += foo.y; bar.z += foo.z; bar.w += foo.w; \
     } \

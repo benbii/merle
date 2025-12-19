@@ -37,7 +37,7 @@ if [ "$1" -eq 20 ]; then
   ionice -c 2 build/dbgen-lite -s 20 -d ssb/20ssbCols -b -t
   cp date.tbl.xz ssb/20ssbCols
   unxz ssb/20ssbCols/date.tbl.xz
-  ln -s "$(realpath ssb/20ssbCols)" crystal/test/ssb/data/s20
+  ln -s "$(realpath ssb/20ssbCols)" crystal/test/ssb/data/s20 || true
   echo -e "Case\tCrystal" >drawFigs/crystal.txt
   pushd crystal/test
   ionice -c 2 python util.py ssb "$1" transform

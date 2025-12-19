@@ -3,7 +3,9 @@ CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 NVCC = $(CUDA_BIN_PATH)/nvcc
 # SM_TARGETS   = -gencode=arch=compute_86,code=\"sm_86,compute_86\" 
-SM_TARGETS   = -gencode=arch=compute_120,code=\"sm_120,compute_120\" 
+SM_TARGETS   = "--generate-code=arch=compute_86,code=[compute_86,sm_86]" \
+	"--generate-code=arch=compute_90,code=[compute_90,sm_90]" \
+	"--generate-code=arch=compute_120,code=[compute_120,sm_120]"
 NVCCFLAGS += -Xptxas="-dlcm=cg -v" -lineinfo -Xcudafe -\# 
 
 SRC = src

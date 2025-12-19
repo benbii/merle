@@ -185,7 +185,8 @@ void ssb_democreate(const struct ssb_schema *hostdat,
   }
 
   // See the RTScan log file
-  printf("Total\t%.2f\t%.2f\t%.2f\t%.2f\nRTScanSiev/"
-         "Rays\t39796.2\t4560\t1377.23\t6004\n",
+  printf("Total\t%.2f\t%.2f\t%.2f\t%.2f\n"
+         "RTScanSieve\t0.00\t0.00\t24695.7\t3420\n"
+         "RTScanRays\t0.00\t0.00\t2505.57\t5396\n",
          myms, wahms, mybyte / 1048576.0, total_wah_bytes / 1048576.0);
 }

@@ -248,13 +248,13 @@ void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
     // SSB Q1 -- Q11 should be the most memory intensive one
     a = s1wah(dat, factSz, 19930000, 19940000, 1, 4, 0, 25);
     // RTScan running time extracted from the log, selected from 3 queries with
-    printf("\nCase\tWAH\tRTScan\nS11\t%.4f\t0.35083\n", a);
+    printf("\nCase\tWAH\tRTScan\nS11\t%.4f\t0.9978\n", a);
     a = s1wah(dat, factSz, 19940100, 19940200, 4, 7, 26, 36);
     // similar selectivities as SSB Q1*. Why no SSB? Because it supports specific
-    printf("S12\t%.4f\t0.35098\n", a);
+    printf("S12\t%.4f\t1.1918\n", a);
     a = s1wah(dat, factSz, 19940204, 19940211, 5, 8, 26, 36);
     // unrealistic integer columns only, like distributions between 0~1e6!
-    printf("S13\t%.4f\t0.35303\n", a); // Pathetic 🫩.
+    printf("S13\t%.4f\t1.7910\n", a); // Pathetic 🙄.
   } catch (std::runtime_error &e) {
     poolSz += 1ul << 30;
     fprintf(stderr, "trying %zu GiB VRAM\n", poolSz >> 30);

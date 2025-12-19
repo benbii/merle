@@ -4,11 +4,16 @@ using namespace mybmpidx;
 using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
 
+// vt0=8 is sufficient for SSB
 static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
-// program + candchk is highly register and shmem intensive. Go for a less
-// aggressive `vt` choice.
+#if __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 900 || __CUDA_ARCH__ == 1000
+static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
+#else
+// Program + candchk is highly shmem intensive.
+// Go for a less aggressive `vt` choice.
 static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
+#endif
 
 #define DOWORK \
   cudaEvent_t start, stop; float msec; \
