@@ -4,7 +4,16 @@ project(mydemo LANGUAGES C CXX CUDA)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_ARCHITECTURES 86 90 120)
+
+# Option for datacenter GPUs with large shared memory (e.g., A100, H100)
+option(LARGE_SMEM "Build for datacenter GPUs with large shared memory (sm_90)" OFF)
+
+if(LARGE_SMEM)
+  set(CMAKE_CUDA_ARCHITECTURES 100 90 80)
+  add_compile_definitions(LARGE_SMEM)
+else()
+  set(CMAKE_CUDA_ARCHITECTURES 86 89 120)
+endif()
 
 # Find required packages
 find_package(CUDAToolkit REQUIRED)

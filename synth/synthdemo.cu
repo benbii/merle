@@ -52,7 +52,7 @@ static __device__ uint2 _op(uint i, synth_schema dat, uint64_t fa1low,
   return ret;
 }
 
-#if __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 900 || __CUDA_ARCH__ == 1000
+#ifdef LARGE_SMEM
 static constexpr size_t nt = 256, vt = 3, vt0 = 19, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
 static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
