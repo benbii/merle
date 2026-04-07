@@ -39,8 +39,8 @@ static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
     p.release(); \
   } cudaEventDestroy(start); cudaEventDestroy(stop);
 
-void s1bmp(const struct ssb_schema *dat, uint factsz, uint32_t dateMin,
-           uint32_t dateMax, uint8_t discntMin, uint8_t discntMax,
+void s1bmp(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
+           uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
            uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {
   auto op = [=, dat = *dat] __device__ (uint i, bool chk) {
     uint2 ret; ret.y = ELIMINATED;
@@ -56,7 +56,7 @@ void s1bmp(const struct ssb_schema *dat, uint factsz, uint32_t dateMin,
     ret.y = 0;
     return ret;
   };
-  recipe r = {.factsz = factsz, .nbit = {32, 8, 8},
+  recipe r = {.factsz = factsz, .nbit = {16, 8, 8},
               .min = {dateMin, discntMin, qtyMin},
               .max = {dateMax, discntMax, qtyMax},
               .dimsz = {nodim, nodim, nodim},
@@ -85,11 +85,8 @@ void s2bmp(const struct ssb_schema *dat, uint factsz, uint32_t pMfgrMin,
     // Filter by manufacturer range
     if (chk && (mfgr < pMfgrMin || mfgr >= pMfgrMax))
       return ret;
-    // Extract year from date (YYYYMMDD format)
-    uint32_t year = dat.loOrderDate[i] / 10000;
-    // GROUP BY group position calculation:
-    // (mfgr - mfgrMin) + (date / 10000 - 1992) * (mfgrMax - mfgrMin)
-    ret.y = (mfgr - pMfgrMin) + (year - 1992) * (pMfgrMax - pMfgrMin);
+    uint32_t year = ssbDateToYear(dat.loOrderDate[i]);
+    ret.y = (mfgr - pMfgrMin) + year * (pMfgrMax - pMfgrMin);
     ret.x = dat.loRevenue[i];
     return ret;
   };
@@ -109,7 +106,7 @@ void s2bmp(const struct ssb_schema *dat, uint factsz, uint32_t pMfgrMin,
 
 void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint32_t dateMin, uint32_t dateMax, uint32_t *grp_out, size_t nr_grp) {
+           uint16_t dateMin, uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range
@@ -117,7 +114,7 @@ void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
     if (chk && (sCity < sCityMin || sCity >= sCityMax))
       return ret;
     // Filter by date range
-    uint32_t date = dat.loOrderDate[i];
+    uint16_t date = dat.loOrderDate[i];
     if (chk && (date < dateMin || date >= dateMax))
       return ret;
     // Join with customer dimension to get customer city
@@ -133,8 +130,8 @@ void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
       cCity /= 10; cCityMinScaled /= 10; cCityMaxScaled /= 10;
       sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const uint a = cCityMaxScaled - cCityMinScaled;
     const uint b = sCityMaxScaled - sCityMinScaled;
     ret.y = a * b * (year - yearMin) + a * (cCity - cCityMinScaled) +
@@ -143,7 +140,7 @@ void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
     return ret;
   };
 
-  recipe r = {.factsz = factsz, .nbit = {8, 8, 32},
+  recipe r = {.factsz = factsz, .nbit = {8, 8, 16},
               .min = {cCityMin, sCityMin, dateMin},
               .max = {cCityMax, sCityMax, dateMax},
               .dimsz = {nodim, nodim, nodim},
@@ -158,8 +155,8 @@ void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
 
 void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint16_t pMfgrMin, uint16_t pMfgrMax, uint32_t dateMin,
-           uint32_t dateMax, uint32_t *grp_out, size_t nr_grp) {
+           uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
+           uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range  
@@ -167,7 +164,7 @@ void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
     if (chk && (sCity < sCityMin || sCity >= sCityMax))
       return ret;
     // Filter by date range
-    uint32_t date = dat.loOrderDate[i];
+    uint16_t date = dat.loOrderDate[i];
     if (chk && (date < dateMin || date >= dateMax))
       return ret;
     // Join with customer dimension to get customer city
@@ -192,8 +189,8 @@ void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
     if (pMfgrMax - pMfgrMin >= 200) {
       pMfgr /= 40; pMfgrMinScaled /= 40; pMfgrMaxScaled /= 40;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const uint a = sCityMaxScaled - sCityMinScaled;
     const uint b = pMfgrMaxScaled - pMfgrMinScaled;
     ret.y = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) + (pMfgr - pMfgrMinScaled);
@@ -201,7 +198,7 @@ void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
     return ret;
   };
 
-  recipe r = {.factsz = factsz, .nbit = {8, 8, 16, 32},
+  recipe r = {.factsz = factsz, .nbit = {8, 8, 16, 16},
               .min = {cCityMin, sCityMin, pMfgrMin, dateMin},
               .max = {cCityMax, sCityMax, pMfgrMax, dateMax},
               .dimsz = {nodim, nodim, nodim, nodim},
@@ -211,7 +208,7 @@ void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
       {vprg::ORM, 0, 0}, {vprg::ANDM, 0, 1}, {vprg::ANDM, 0, 2},
       {vprg::ANDM, 0, 3}, {vprg::END, 0, 0},  {vprg::END, 0, 0},
   };
-  if (dateMin <= 19920000 && dateMax >= 19990000)
+  if (dateMin <= SSBDATE_920101 && dateMax >= SSBDATE_990101)
     r.attr[3] = nullptr, instrs[3].opcode = vprg::END;
   DOWORK
 }
@@ -221,11 +218,11 @@ uint32_t *ssb_demobmp(const struct ssb_schema *dat, size_t factSz) {
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
 
   printf("\n\nCase\tPerfect\tManyOrs\tCandchk\nSSB11");
-  s1bmp(dat, factSz, 19930000, 19940000, 1, 4, 0, 25, res);
+  s1bmp(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res);
   printf("\nSSB12");
-  s1bmp(dat, factSz, 19940100, 19940200, 4, 7, 26, 36, res + 1);
+  s1bmp(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
   printf("\nSSB13");
-  s1bmp(dat, factSz, 19940204, 19940211, 5, 8, 26, 36, res + 2);
+  s1bmp(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2);
 
   printf("\nSSB21");
   s2bmp(dat, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21);
@@ -235,27 +232,26 @@ uint32_t *ssb_demobmp(const struct ssb_schema *dat, size_t factSz) {
   s2bmp(dat, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22, NGRP_S23);
 
   printf("\nSSB31");
-  s3bmp(dat, factSz, 200, 250, 200, 250, 19920000, 19980000,
+  s3bmp(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2, NGRP_S31);
   printf("\nSSB32");
-  s3bmp(dat, factSz, 190, 200, 190, 200, 19920000, 19980000,
+  s3bmp(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31, NGRP_S32);
   printf("\nSSB33");
-  s3bmp(dat, factSz, 51, 55, 51, 55, 19920000, 19980000,
+  s3bmp(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31 + NGRP_S32, NGRP_S33);
   printf("\nSSB34");
-  s3bmp(dat, factSz, 51, 55, 51, 55, 19971200, 19980000,
+  s3bmp(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33, NGRP_S34);
 
   printf("\nSSB41");
-  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, 19920000, 19990000,
+  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
         res + SUMGRP_S3, NGRP_S41);
   printf("\nSSB42");
-  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, 19970000, 19990000,
+  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
         res + SUMGRP_S3 + NGRP_S41, NGRP_S42);
   printf("\nSSB43");
-  s4bmp(dat, factSz, 150, 200, 190, 200, 120, 160, 19970000, 19990000,
+  s4bmp(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101,
         res + SUMGRP_S3 + NGRP_S41 + NGRP_S42, NGRP_S43);
   return res;
 }
-

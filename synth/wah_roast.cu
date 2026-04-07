@@ -25,10 +25,8 @@ void synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
     auto t1 = wahOr(b1.data(), b1s.data(), b1.size(),
                     b2.data(), b2s.data(), b2.size(), ctx);
     auto t1s = wahCntExcScan(t1.data(), t1.size(), ctx);
-    auto t2 = wahAndNo1(t1.data(), t1s.data(), t1.size(),
-                        b3.data(), b3s.data(), b3.size(), ctx);
-    // auto t2d =
-    //     wahDecomp(result.data(), resultScan.data(), result.size(), ctx);
+    (void)wahAndNo1(t1.data(), t1s.data(), t1.size(),
+                    b3.data(), b3s.data(), b3.size(), ctx);
   }
 
   cudaEventRecord(stop); cudaEventSynchronize(stop);

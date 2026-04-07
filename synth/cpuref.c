@@ -199,7 +199,7 @@ bool synth_demoall(const char *synthDirname) {
   sprintf(case_dir, "%s/%s", synthDirname, cases[1]);
   size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
   double *win = window_zipf(skews[1], 1024, 60);
-  for (size_t i = 0; i < 6; ++i) {
+  for (size_t i = 0; i < 7; ++i) {
     uint64_t low = 0, hi = 60;
     while (win[low] > colsel[i]) ++low, ++hi;
     float2 times = synth_method(&dev_dat, factSz, low, hi, low, hi, low, hi);
@@ -220,7 +220,7 @@ bool synth_demoall(const char *synthDirname) {
     win = window_zipf(skews[i], 1024, 60);
 
     // Run on selectivity 1/{256,128,64,32,16,8}
-    for (size_t o = 1; o < 6; o++) {
+    for (size_t o = 1; o < 7; o++) {
       // Find the first x at which [x, x+60) has prob <= sel
       uint64_t low = 0, hi = 60;
       while (win[low] > colsel[o]) ++low, ++hi;

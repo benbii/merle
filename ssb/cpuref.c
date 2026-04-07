@@ -44,7 +44,7 @@ size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
   __ldssb((void **)&host->loPartKey, "loPartKey", ssbDirname,
           factsz * sizeof(uint32_t));
   __ldssb((void **)&host->loOrderDate, "loOrderDate", ssbDirname,
-          factsz * sizeof(uint32_t));
+          factsz * sizeof(uint16_t));
   __ldssb((void **)&host->loExtendedPrice, "loExtendedPrice", ssbDirname,
           factsz * sizeof(uint32_t));
   __ldssb((void **)&host->loRevenue, "loRevenue", ssbDirname,
@@ -75,7 +75,7 @@ size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
     // Allocate device memory
     dev->loCustKey = __cum(factsz * sizeof(uint32_t));
     dev->loPartKey = __cum(factsz * sizeof(uint32_t));
-    dev->loOrderDate = __cum(factsz * sizeof(uint32_t));
+    dev->loOrderDate = __cum(factsz * sizeof(uint16_t));
     dev->loExtendedPrice = __cum(factsz * sizeof(uint32_t));
     dev->loRevenue = __cum(factsz * sizeof(uint32_t));
     dev->loSupplyCost = __cum(factsz * sizeof(uint32_t));
@@ -94,7 +94,7 @@ size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
     // Copy fact table data to device
     cudaMemcpy(dev->loCustKey, host->loCustKey, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
     cudaMemcpy(dev->loPartKey, host->loPartKey, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev->loOrderDate, host->loOrderDate, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev->loOrderDate, host->loOrderDate, factsz * sizeof(uint16_t), cudaMemcpyHostToDevice);
     cudaMemcpy(dev->loExtendedPrice, host->loExtendedPrice, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
     cudaMemcpy(dev->loRevenue, host->loRevenue, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
     cudaMemcpy(dev->loSupplyCost, host->loSupplyCost, factsz * sizeof(uint32_t), cudaMemcpyHostToDevice);
@@ -139,8 +139,8 @@ void ssb_free(struct ssb_schema* host, struct ssb_schema* dev) {
 
 // All ranges are left inclusive, right exclusive.
 // SSB Q1 is aggregating without GROUP BY so it returns a value.
-uint64_t s1ref(const struct ssb_schema *dat, size_t factsz, uint32_t dateMin,
-               uint32_t dateMax, uint8_t discntMin, uint8_t discntMax,
+uint64_t s1ref(const struct ssb_schema *dat, size_t factsz, uint16_t dateMin,
+               uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
                uint8_t qtyMin, uint8_t qtyMax) {
   uint64_t res = 0;
   for (size_t i = 0; i < factsz; ++i) {
@@ -167,11 +167,8 @@ void s2ref(const struct ssb_schema *dat, size_t factsz, uint32_t pMfgrMin,
     uint16_t mfgr = dat->partMfgr[partKey];  // Keys are zero-padded
     // Filter by manufacturer range
     if (mfgr < pMfgrMin || mfgr >= pMfgrMax) continue;
-    // Extract year from date (YYYYMMDD format)
-    uint32_t year = dat->loOrderDate[i] / 10000;
-    // GROUP BY group position calculation:
-    // (mfgr - mfgrMin) + (date / 10000 - 1992) * (mfgrMax - mfgrMin)
-    uint32_t grp = (mfgr - pMfgrMin) + (year - 1992) * (pMfgrMax - pMfgrMin);
+    uint32_t year = ssbDateToYear(dat->loOrderDate[i]);
+    uint32_t grp = (mfgr - pMfgrMin) + year * (pMfgrMax - pMfgrMin);
     // Aggregate revenue into the group
     grpby_out[grp] += dat->loRevenue[i];
   }
@@ -179,11 +176,11 @@ void s2ref(const struct ssb_schema *dat, size_t factsz, uint32_t pMfgrMin,
 
 void s3ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint32_t dateMin, uint32_t dateMax, uint32_t *grpby_out) {
+           uint16_t dateMin, uint16_t dateMax, uint32_t *grpby_out) {
   for (size_t i = 0; i < factsz; ++i) {
     uint16_t sCity = dat->loSuppCity[i];
     if (sCity < sCityMin || sCity >= sCityMax) continue;
-    uint32_t date = dat->loOrderDate[i];
+    uint16_t date = dat->loOrderDate[i];
     if (date < dateMin || date >= dateMax) continue;
     // Join with customer dimension to get customer city
     uint32_t custKey = dat->loCustKey[i];
@@ -197,8 +194,8 @@ void s3ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
       cCity /= 10; cCityMinScaled /= 10; cCityMaxScaled /= 10;
       sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const size_t a = cCityMaxScaled - cCityMinScaled;
     const size_t b = sCityMaxScaled - sCityMinScaled;
     const size_t grp = a * b * (year - yearMin) + a * (cCity - cCityMinScaled) +
@@ -210,12 +207,12 @@ void s3ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
 
 void s4ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint16_t pMfgrMin, uint16_t pMfgrMax, uint32_t dateMin,
-           uint32_t dateMax, uint32_t *grpby_out) {
+           uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
+           uint16_t dateMax, uint32_t *grpby_out) {
   for (size_t i = 0; i < factsz; ++i) {
     uint16_t sCity = dat->loSuppCity[i];
     if (sCity < sCityMin || sCity >= sCityMax) continue;
-    uint32_t date = dat->loOrderDate[i];
+    uint16_t date = dat->loOrderDate[i];
     if (date < dateMin || date >= dateMax) continue;
     // Join with customer dimension to get customer city
     uint32_t custKey = dat->loCustKey[i];
@@ -235,8 +232,8 @@ void s4ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
     if (pMfgrMax - pMfgrMin >= 200) {
       pMfgr /= 40; pMfgrMinScaled /= 40; pMfgrMaxScaled /= 40;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const size_t a = sCityMaxScaled - sCityMinScaled;
     const size_t b = pMfgrMaxScaled - pMfgrMinScaled;
     const size_t grp = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) +
@@ -253,13 +250,13 @@ uint32_t *ssb_demoref(const struct ssb_schema *dat, size_t factSz) {
   {
     switch (omp_get_thread_num()) {
     case 0:
-      res[0] = (uint32_t)s1ref(dat, factSz, 19930000, 19940000, 1, 4, 0, 25);
+      res[0] = (uint32_t)s1ref(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25);
       break;
     case 1:
-      res[1] = (uint32_t)s1ref(dat, factSz, 19940100, 19940200, 4, 7, 26, 36);
+      res[1] = (uint32_t)s1ref(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36);
       break;
     case 2:
-      res[2] = (uint32_t)s1ref(dat, factSz, 19940204, 19940211, 5, 8, 26, 36);
+      res[2] = (uint32_t)s1ref(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36);
       break;
 
     case 3:
@@ -274,32 +271,32 @@ uint32_t *ssb_demoref(const struct ssb_schema *dat, size_t factSz) {
       break;
 
     case 6:
-      s3ref(dat, factSz, 200, 250, 200, 250, 19920000, 19980000,
+      s3ref(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
             &res[SUMGRP_S2]);
       break;
     case 7:
-      s3ref(dat, factSz, 190, 200, 190, 200, 19920000, 19980000,
+      s3ref(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
             &res[SUMGRP_S2 + NGRP_S31]);
       break;
     case 8:
-      s3ref(dat, factSz, 51, 55, 51, 55, 19920000, 19980000,
+      s3ref(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
             &res[SUMGRP_S2 + NGRP_S31 + NGRP_S32]);
       break;
     case 9:
-      s3ref(dat, factSz, 51, 55, 51, 55, 19971200, 19980000,
+      s3ref(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
             &res[SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33]);
       break;
 
     case 10:
-      s4ref(dat, factSz, 150, 200, 150, 200, 0, 400, 19920000, 19990000,
+      s4ref(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
             &res[SUMGRP_S3]);
       break;
     case 11:
-      s4ref(dat, factSz, 150, 200, 150, 200, 0, 400, 19970000, 19990000,
+      s4ref(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
             &res[SUMGRP_S3 + NGRP_S41]);
       break;
     case 12:
-      s4ref(dat, factSz, 150, 200, 190, 200, 120, 160, 19970000, 19990000,
+      s4ref(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101,
             &res[SUMGRP_S3 + NGRP_S41 + NGRP_S42]);
     }
   }

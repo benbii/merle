@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "ssb/ssbdemo.h"
 _Static_assert(2147483647 == RAND_MAX, "2147483647 != RAND_MAX");
 #define NTHREADS 16
 
@@ -55,14 +56,16 @@ void part(size_t nr, uint16_t *name, uint16_t *mfgr, uint8_t *color,
 }
 
 struct ssb {
-  uint32_t *loCustKey, *loPartKey, *loOrderDate;
+  uint32_t *loCustKey, *loPartKey;
+  uint16_t *loOrderDate;
   uint32_t *loExtendedPrice, *loRevenue, *loSupplyCost;
   uint8_t *loQuantity, *loDiscount, *loSuppCity;
   uint8_t *custMktSegment, *custCity;
   uint16_t *partName, *partMfgr;
   uint8_t *partColor, *partType, *partSize, *partContainer;
   // somehow not needed in ALL 13 queries lol
-  uint32_t *loOrderKey, *loOrderPrice, *loCommitDate;
+  uint32_t *loOrderKey, *loOrderPrice;
+  uint16_t *loCommitDate;
   uint32_t *loSuppKey, *loOrdTotalPrice;
   uint8_t *loLineNumber, *loOrderPriority, *loShipPriority;
   uint8_t *loTax, *loShipMode, *suppCity;
@@ -115,35 +118,6 @@ struct ssb ssb_create(size_t sf) {
   return res;
 }
 
-static uint32_t _ssbymd(uint32_t rng) {
-  uint32_t m = rng % 12; rng /= 12;
-  uint32_t y = rng % 7; rng /= 7;
-  uint32_t r = 19920101 + m * 100 + y * 10000;
-  switch (m) {
-  case 0: case 2: case 4: case 6: case 7: case 9: case 11:
-    return r + rng % 31;
-  case 3: case 5: case 8: case 10:
-    return r + rng % 30;
-  case 1:
-    if (y % 4 == 0) return r + rng % 29;
-    return r + rng % 28;
-  }
-  __builtin_unreachable();
-}
-static uint32_t _ssbmd(uint32_t rng) {
-  uint32_t m = rng % 12; rng /= 12;
-  uint32_t r = 19920101 + m * 100;
-  switch (m) {
-  case 0: case 2: case 4: case 6: case 7: case 9: case 11:
-    return r + rng % 31;
-  case 3: case 5: case 8: case 10:
-    return r + rng % 30;
-  case 1:
-    return r + rng % 28;
-  }
-  __builtin_unreachable();
-}
-
 // partKey, orderDate, orderPriority, shipPriority, ordTotalPrice: shared by order;
 // custKey, suppkey, quantity, extendedPrice, discount, revenue, supplyCost,
 // tax, shipMode, suppCity: exclusive to each row.
@@ -158,7 +132,6 @@ size_t lo(const struct ssb *s, size_t id_start, uint32_t seed) {
     s->loExtendedPrice[i] = x % 55450;
     s->loDiscount[i] = x % 11; x /= 11;  // 0-10 per SSB spec
     s->loTax[i] = x % 9; x /= 9;
-    s->loCommitDate[i] = _ssbmd(x);
     s->loRevenue[i] = s->loExtendedPrice[i] * (100 - s->loDiscount[i]) / 100;
     x = rand_r(&myseed);
     s->loSupplyCost[i] = x % 131072; x /= 131072;
@@ -195,7 +168,7 @@ size_t lo(const struct ssb *s, size_t id_start, uint32_t seed) {
       x = rand_r(&myseed);
       const uint8_t shipPriority = x % 4; x /= 4;
       const uint8_t orderPriority = x % 5 + 1; x /= 5;
-      const uint32_t orderDate = _ssbymd(x);
+      const uint16_t orderDate = x % SSBDATE_990101;
       size_t ordTotalPrice = 0;
       for (int i = 0; i < nLine; ++i) {
         s->loCustKey[myrow + i] = custkey;
@@ -208,8 +181,7 @@ size_t lo(const struct ssb *s, size_t id_start, uint32_t seed) {
       }
       for (int i = 0; i < nLine; ++i, ++myrow) {
         s->loOrdTotalPrice[myrow] = ordTotalPrice;
-        while (s->loCommitDate[myrow] < orderDate)
-          s->loCommitDate[myrow] += 10000;
+        s->loCommitDate[myrow] = orderDate;
       }
     }
   }

@@ -5,4 +5,6 @@ synth/*zfcols
 ssb/*ssbCols
 drawFigs/*.png
 drawFigs/*.pdf
+drawFigs/sf*.txt
 dbgen-
+paper

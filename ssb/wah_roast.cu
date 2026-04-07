@@ -21,16 +21,17 @@ static mgpu::mem_t<uint32_t> convertU16ToU32(const uint16_t *src, size_t factSz,
   return dst;
 }
 
-float s1wah(const struct ssb_schema *dat, uint factsz, uint32_t dateMin,
-            uint32_t dateMax, uint8_t discntMin, uint8_t discntMax,
+float s1wah(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
+            uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
             uint8_t qtyMin, uint8_t qtyMax) {
   dumb_pool_t ctx(poolSz, false);
   // Convert uint8_t columns to uint32_t for dbjoinFlatWah
+  auto dateU32 = convertU16ToU32(dat->loOrderDate, factsz, ctx);
   auto discntU32 = convertToU32(dat->loDiscount, factsz, ctx);
   auto qtyU32 = convertToU32(dat->loQuantity, factsz, ctx);
   // Create 31-bit bitmaps using dbjoinFlatWah (for direct column filters, use
   // dim1=nullptr, dim2=nullptr)
-  auto dateBitmap = dbjoinFlatWah(dat->loOrderDate, factsz, nullptr, nullptr,
+  auto dateBitmap = dbjoinFlatWah(dateU32.data(), factsz, nullptr, nullptr,
                                   dateMin, dateMax, ctx);
   auto discntBitmap = dbjoinFlatWah(discntU32.data(), factsz, nullptr, nullptr,
                                     discntMin, discntMax, ctx);
@@ -117,18 +118,19 @@ void s2wah(const struct ssb_schema *dat, uint factsz, uint32_t pMfgrMin,
 
 void s3wah(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint32_t dateMin, uint32_t dateMax, const char *query_name,
+           uint16_t dateMin, uint16_t dateMax, const char *query_name,
            size_t custDimSize) {
   dumb_pool_t ctx(poolSz, false);
   printf("%s\t", query_name);
   // prepare
+  auto dateU32 = convertU16ToU32(dat->loOrderDate, factsz, ctx);
   auto sCityU32 = convertToU32(dat->loSuppCity, factsz, ctx);
   auto custCityU32 = convertToU32(dat->custCity, custDimSize, ctx);
   auto cCityBitmap = dbjoinFlatWah(dat->loCustKey, factsz, custCityU32.data(),
                                    nullptr, cCityMin, cCityMax, ctx);
   auto sCityBitmap = dbjoinFlatWah(sCityU32.data(), factsz, nullptr, nullptr,
                                    sCityMin, sCityMax, ctx);
-  auto dateBitmap = dbjoinFlatWah(dat->loOrderDate, factsz, nullptr, nullptr,
+  auto dateBitmap = dbjoinFlatWah(dateU32.data(), factsz, nullptr, nullptr,
                                   dateMin, dateMax, ctx);
   mgpu::mem_t<int> cCityWah =
       wahCompress((const int *)cCityBitmap.data(), cCityBitmap.size(), ctx);
@@ -169,12 +171,13 @@ void s3wah(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
 
 void s4wah(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint16_t pMfgrMin, uint16_t pMfgrMax, uint32_t dateMin,
-           uint32_t dateMax, const char *query_name, size_t custDimSize,
+           uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
+           uint16_t dateMax, const char *query_name, size_t custDimSize,
            size_t partDimSize) {
   dumb_pool_t ctx(poolSz, false);
   printf("%s\t", query_name);
   // prepare
+  auto dateU32 = convertU16ToU32(dat->loOrderDate, factsz, ctx);
   auto sCityU32 = convertToU32(dat->loSuppCity, factsz, ctx);
   auto custCityU32 = convertToU32(dat->custCity, custDimSize, ctx);
   auto partMfgrU32 = convertU16ToU32(dat->partMfgr, partDimSize, ctx);
@@ -184,7 +187,7 @@ void s4wah(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
                                    sCityMin, sCityMax, ctx);
   auto pMfgrBitmap = dbjoinFlatWah(dat->loPartKey, factsz, partMfgrU32.data(),
                                    nullptr, pMfgrMin, pMfgrMax, ctx);
-  auto dateBitmap = dbjoinFlatWah(dat->loOrderDate, factsz, nullptr, nullptr,
+  auto dateBitmap = dbjoinFlatWah(dateU32.data(), factsz, nullptr, nullptr,
                                   dateMin, dateMax, ctx);
   mgpu::mem_t<int> cCityWah =
       wahCompress((const int *)cCityBitmap.data(), cCityBitmap.size(), ctx);
@@ -246,13 +249,13 @@ void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
   try {
     float a;
     // SSB Q1 -- Q11 should be the most memory intensive one
-    a = s1wah(dat, factSz, 19930000, 19940000, 1, 4, 0, 25);
+    a = s1wah(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25);
     // RTScan running time extracted from the log, selected from 3 queries with
     printf("\nCase\tWAH\tRTScan\nS11\t%.4f\t0.9978\n", a);
-    a = s1wah(dat, factSz, 19940100, 19940200, 4, 7, 26, 36);
+    a = s1wah(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36);
     // similar selectivities as SSB Q1*. Why no SSB? Because it supports specific
     printf("S12\t%.4f\t1.1918\n", a);
-    a = s1wah(dat, factSz, 19940204, 19940211, 5, 8, 26, 36);
+    a = s1wah(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36);
     // unrealistic integer columns only, like distributions between 0~1e6!
     printf("S13\t%.4f\t1.7910\n", a); // Pathetic 🙄.
   } catch (std::runtime_error &e) {
@@ -270,16 +273,16 @@ void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
   s2wah(dat, factSz, 260, 261, 50, 100, "S23", maxPartKey);
 
   // SSB Q3
-  s3wah(dat, factSz, 200, 250, 200, 250, 19920000, 19980000, "S31", maxCustKey);
-  s3wah(dat, factSz, 190, 200, 190, 200, 19920000, 19980000, "S32", maxCustKey);
-  s3wah(dat, factSz, 51, 55, 51, 55, 19920000, 19980000, "S33", maxCustKey);
-  s3wah(dat, factSz, 51, 55, 51, 55, 19971200, 19980000, "S34", maxCustKey);
+  s3wah(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101, "S31", maxCustKey);
+  s3wah(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101, "S32", maxCustKey);
+  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101, "S33", maxCustKey);
+  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101, "S34", maxCustKey);
 
   // SSB Q4
-  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, 19920000, 19990000, "S41",
+  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101, "S41",
         maxCustKey, maxPartKey);
-  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, 19970000, 19990000, "S42",
+  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101, "S42",
         maxCustKey, maxPartKey);
-  s4wah(dat, factSz, 150, 200, 190, 200, 120, 160, 19970000, 19990000, "S43",
+  s4wah(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101, "S43",
         maxCustKey, maxPartKey);
 }

@@ -92,13 +92,17 @@ void ssb_democreate(const struct ssb_schema *hostdat,
 
   // 1. Order Date: 4 months per bin, for a total of 18 bins
   {
-    uint64_t mins[] = {19920100, 19920500, 19920900, 19930100, 19930500, 19930900,
-                       19940100, 19940500, 19940900, 19950100, 19950500, 19950900,
-                       19960100, 19960500, 19960900, 19970100, 19970500, 19970900};
-    uint64_t maxes[] = {19920500, 19920900, 19930100, 19930500, 19930900, 19940100,
-                        19940500, 19940900, 19950100, 19950500, 19950900, 19960100,
-                        19960500, 19960900, 19970100, 19970500, 19970900, 19980100};
-    foo result = _helper(nullptr, dat->loOrderDate, 32, factSz, 0, mins, maxes, 18);
+    uint64_t mins[] = {SSBDATE_920101, SSBDATE_920501, SSBDATE_920901, SSBDATE_930101,
+                       SSBDATE_930501, SSBDATE_930901, SSBDATE_940101, SSBDATE_940501,
+                       SSBDATE_940901, SSBDATE_950101, SSBDATE_950501, SSBDATE_950901,
+                       SSBDATE_960101, SSBDATE_960501, SSBDATE_960901, SSBDATE_970101,
+                       SSBDATE_970501, SSBDATE_970901};
+    uint64_t maxes[] = {SSBDATE_920501, SSBDATE_920901, SSBDATE_930101, SSBDATE_930501,
+                        SSBDATE_930901, SSBDATE_940101, SSBDATE_940501, SSBDATE_940901,
+                        SSBDATE_950101, SSBDATE_950501, SSBDATE_950901, SSBDATE_960101,
+                        SSBDATE_960501, SSBDATE_960901, SSBDATE_970101, SSBDATE_970501,
+                        SSBDATE_970901, SSBDATE_980101};
+    foo result = _helper(nullptr, dat->loOrderDate, 16, factSz, 0, mins, maxes, 18);
     printf("loOrderDate\t%.2f\t%.2f\t%.2f\t%.2f\n", result.bmp_msec, result.wah_msec,
            result.bmp_sz / (1024.0 * 1024.0), result.wah_sz / (1024.0 * 1024.0));
     mybyte += result.bmp_sz;

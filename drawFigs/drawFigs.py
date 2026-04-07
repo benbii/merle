@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Load result files into dataframes
-if len(sys.argv) > 1:
-  os.chdir(sys.argv[1])
+if len(sys.argv) > 2:
+  os.chdir(sys.argv[2])
 a = open('sf20.txt').read().split('\n\n')
 idxcreate20 = pd.read_csv(StringIO(a[0]), sep='\t')
 synth20 = pd.read_csv(StringIO(a[5]), sep='\t')
@@ -19,7 +19,8 @@ ssb20 = pd.concat([
   pd.read_csv(StringIO(a[4]), sep='\t').iloc[:, 1:],
   pd.read_csv('crystal.txt', sep='\t').iloc[:, 1:],
 ], axis=1)
-a = open('sf100.txt').read().split('\n\n')
+# IMPORTANT: no longer SF=100; rather the SF is specified in CLI arg
+a = open(f'sf{sys.argv[1]}.txt').read().split('\n\n')
 idxcreate100 = pd.read_csv(StringIO(a[0]), sep='\t')
 method12 = pd.read_csv(StringIO(a[5]), sep=r'\s+')
 synth100 = pd.read_csv(StringIO(a[6]), sep='\t')
@@ -31,7 +32,7 @@ ssb100 = pd.concat([
 ], axis=1)
 
 # print('SF20:', idxcreate20, ssb20, synth20, 'SF100:', idxcreate100,
-#   synth100, sep='\n\n')
+#   ssb100, synth100, sep='\n\n')
 
 plt.rcParams.update({
   'text.usetex': True,
@@ -51,7 +52,7 @@ def gmean(arr):
 # =============================================================================
 # Figure 0: TEASER - Most Important Plot (Q3.2)
 # =============================================================================
-q32 = ssb100[ssb100['Case'] == 'SSB32'].iloc[0]
+q32 = ssb100[ssb100['Case'] == 'S32'].iloc[0]
 # Data for three stages
 # 1. Previous Methods (WAH): index + materialize + process (aligned only)
 wah_idx = q32['WAH']
@@ -113,16 +114,16 @@ ax.annotate('', xy=(positions[4] - 0.2, chk_fused), xytext=(positions[2] + 0.2, 
 ax.text((positions[2] + positions[4])/2, (chk_nofuse + chk_fused)/2 - 0.5,
         f'{pct2:.0f}\\%\nFaster', fontsize=10, color='#d62728', ha='center', fontweight='bold')
 # Labels and formatting
-ax.set_ylabel('Q3.2 (ms)', fontsize=11)
+ax.set_ylabel(f'SF {sys.argv[1]} SSB Q3.2 (ms)', fontsize=11)
 ax.set_xticks([positions[0], (positions[1]+positions[2])/2, (positions[3]+positions[4])/2])
 ax.set_xticklabels(['Previous\nMethods', 'Virtual Query\nProgram', 'Fuse with Query\nExecution'], fontsize=10)
 ax.legend(loc='upper right', fontsize=7)
-ax.set_ylim(0, 2.4)
+ax.set_ylim(0, 1.5)
 ax.set_xlim(-0.5, 4.2)
 plt.tight_layout()
-plt.savefig('fig_teaser.pdf', bbox_inches='tight')
-plt.savefig('fig_teaser.png', bbox_inches='tight', dpi=150)
-print("Saved fig_teaser.pdf/png")
+plt.savefig(f'fig_teaser_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_teaser_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"Saved fig_teaser_sf{sys.argv[1]}.pdf/png")
 print(f"Teaser speedups: WAH->VQP={pct1:.0f}% faster, VQP->Fused={pct2:.0f}% faster")
 
 # =============================================================================
@@ -138,13 +139,15 @@ ax.plot(sels, m2, 's-', label='Method 2', color='#1f77b4')
 ax.set_xlabel('Selectivity')
 ax.set_ylabel('Time (ms)')
 ax.legend(loc='upper left', fontsize=10)
-ax.set_xlim(0, 0.09)
+ax.set_xscale('log', base=2)
+ax.set_xticks(sels)
+ax.set_xticklabels([f'$\\frac{{1}}{{{int(1/s)}}}$' for s in sels])
 ax.set_ylim(0, max(m1) * 1.1)
 
 plt.tight_layout()
-plt.savefig('fig_method12.pdf', bbox_inches='tight')
-plt.savefig('fig_method12.png', bbox_inches='tight', dpi=150)
-print("Saved fig_method12.pdf/png")
+plt.savefig(f'fig_method12_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_method12_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"Saved fig_method12_sf{sys.argv[1]}.pdf/png")
 
 # Print analysis
 crossover_idx = np.where(m1 < m2)[0]
@@ -156,8 +159,6 @@ print(f"At high sel ({sels[-1]:.2f}): M1={m1[-1]:.2f}ms, M2={m2[-1]:.2f}ms, M1 i
 # Average speedup of M2 over M1
 avg_speedup = np.mean(m1 / m2)
 print(f"Average speedup of Method 2 over Method 1: {(avg_speedup-1)*100:.0f}%")
-
-exit(0)
 
 # =============================================================================
 # Figure 1: Overall Performance on SSB (SF=20)
@@ -176,7 +177,7 @@ rtscan_idx = ssb20['RTScan'].where(ssb20['RTScan'] < 50, np.nan)
 rtscan_tbl = ssb20['PftStg3'].where(ssb20['RTScan'] < 50, np.nan)
 rtscan_total = rtscan_idx + rtscan_tbl
 # MyJoin: optimized baseline without indexing
-myjoin = ssb20['MyJoin']
+myjoin = ssb20['Join']
 # Add geometric mean
 queries_with_gmean = queries + ['gmean']
 ours_with_gmean = list(ours) + [gmean(ours)]
@@ -192,9 +193,9 @@ x = np.arange(len(queries_with_gmean))
 width = 0.2
 # Bar positions (left to right): Ours, WAH, MyJoin, RTScan
 # Ours (single bar)
-ax.bar(x - 1.5*width, ours_with_gmean, width, label='Ours (CandChk)', color='#1f77b4')
+ax.bar(x - 1.5*width, ours_with_gmean, width, label='Ours (Worst-case)', color='#1f77b4')
 # WAH (stacked: index + materialization + table lookup)
-ax.bar(x - 0.5*width, wah_idx_gm, width, label='WAH', color='#d62728')
+ax.bar(x - 0.5*width, wah_idx_gm, width, label='WAH (Best-case)', color='#d62728')
 ax.bar(x - 0.5*width, wah_mat_gm, width, bottom=wah_idx_gm, color='#ff9896')
 ax.bar(x - 0.5*width, wah_tbl_gm, width, bottom=[a+b for a,b in zip(wah_idx_gm, wah_mat_gm)], color='#98df8a')
 # MyJoin (single bar)
@@ -204,9 +205,9 @@ ax.bar(x + 1.5*width, rtscan_idx_gm, width, label='RTScan', color='#ff7f0e')
 ax.bar(x + 1.5*width, rtscan_tbl_gm, width, bottom=rtscan_idx_gm, color='#98df8a')
 ax.set_ylabel('Time (ms)')
 ax.set_xticks(x)
-ax.set_xticklabels([q.replace('SSB', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
+ax.set_xticklabels([q.replace('S', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
 ax.legend(loc='upper left', ncol=4, fontsize=11)
-ax.set_ylim(0, max(myjoin_with_gmean) * 1.15)
+# ax.set_ylim(0, max(myjoin_with_gmean) * 1.15)
 # Add vertical line before GeoMean
 ax.axvline(x=len(queries) - 0.5, color='gray', linestyle='--', alpha=0.5)
 plt.tight_layout()
@@ -228,7 +229,7 @@ print(f"  vs MyJoin:  {gmean(myjoin) / gmean(ours):.2f}x\n")
 # Figure 1b: MyJoin vs Crystal (SF=20) - Database Integration inline experiment
 # =============================================================================
 queries = ssb20['Case'].tolist()
-myjoin20 = ssb20['MyJoin']
+myjoin20 = ssb20['Join']
 crystal = ssb20['Crystal']
 
 # Add geometric mean
@@ -240,12 +241,12 @@ fig, ax = plt.subplots(figsize=(8, 3))
 x = np.arange(len(queries_with_gmean))
 width = 0.35
 
-ax.bar(x - width/2, myjoin_gm, width, label='Ours (optimized)', color='#1f77b4')
+ax.bar(x - width/2, myjoin_gm, width, label='Our Join Baseline', color='#1f77b4')
 ax.bar(x + width/2, crystal_gm, width, label='Crystal', color='#ff7f0e')
 
 ax.set_ylabel('Time (ms)')
 ax.set_xticks(x)
-ax.set_xticklabels([q.replace('SSB', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
+ax.set_xticklabels([q.replace('S', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
 ax.legend(loc='upper left', fontsize=11)
 ax.set_ylim(0, max(crystal_gm) * 1.15)
 ax.axvline(x=len(queries) - 0.5, color='gray', linestyle='--', alpha=0.5)
@@ -272,7 +273,7 @@ wah_mat = ssb100['PftStg2']
 wah_tbl = ssb100['PftStg3']
 wah_total = wah_idx + wah_mat + wah_tbl
 # MyJoin: optimized baseline without indexing
-myjoin = ssb100['MyJoin']
+myjoin = ssb100['Join']
 # Add geometric mean
 queries_with_gmean = queries + ['gmean']
 ours_with_gmean = list(ours) + [gmean(ours)]
@@ -286,26 +287,26 @@ x = np.arange(len(queries_with_gmean))
 width = 0.25
 # Bar positions (left to right): Ours, WAH, MyJoin
 # Ours (single bar)
-ax.bar(x - width, ours_with_gmean, width, label='Ours (CandChk)', color='#1f77b4')
+ax.bar(x - width, ours_with_gmean, width, label='Ours (Worst-case)', color='#1f77b4')
 # WAH (stacked: index + materialization + table lookup)
-ax.bar(x, wah_idx_gm, width, label='WAH', color='#d62728')
+ax.bar(x, wah_idx_gm, width, label='WAH (Best-case)', color='#d62728')
 ax.bar(x, wah_mat_gm, width, bottom=wah_idx_gm, color='#ff9896')
 ax.bar(x, wah_tbl_gm, width, bottom=[a+b for a,b in zip(wah_idx_gm, wah_mat_gm)], color='#98df8a')
 # MyJoin (single bar)
 ax.bar(x + width, myjoin_with_gmean, width, label='MyJoin', color='#2ca02c')
 ax.set_ylabel('Time (ms)')
 ax.set_xticks(x)
-ax.set_xticklabels([q.replace('SSB', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
+ax.set_xticklabels([q.replace('S', 'Q') for q in queries_with_gmean], rotation=45, ha='right')
 ax.legend(loc='upper left', ncol=4, fontsize=11)
 ax.set_ylim(0, max(myjoin_with_gmean) * 1.15)
 # Add vertical line before GeoMean
 ax.axvline(x=len(queries) - 0.5, color='gray', linestyle='--', alpha=0.5)
 plt.tight_layout()
-plt.savefig('fig_overall_sf100.pdf', bbox_inches='tight')
-plt.savefig('fig_overall_sf100.png', bbox_inches='tight', dpi=150)
-print("Saved fig_overall_sf100.pdf/png")
+plt.savefig(f'fig_overall_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_overall_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"Saved fig_overall_sf{sys.argv[1]}.pdf/png")
 # Print speedup summary
-print("=== SF=100 Speedup Analysis ===")
+print(f"=== SF={sys.argv[1]} Speedup Analysis ===")
 print(f"Geometric mean times (ms):")
 print(f"  Ours:     {gmean(ours):.3f}")
 print(f"  WAH:      {gmean(wah_total):.3f}")
@@ -318,21 +319,21 @@ print(f"  vs MyJoin:  {gmean(myjoin) / gmean(ours):.2f}x\n")
 # Figure 3: Alignment Scenarios (SF=100) - Small figure with selected queries
 # =============================================================================
 # Select representative queries: Q1.1, Q2.1, Q3.1, Q4.1, Q4.2, Q4.3
-sel_queries_align = ['SSB11', 'SSB21', 'SSB31', 'SSB41', 'SSB42', 'SSB43']
+sel_queries_align = ['S11', 'S21', 'S31', 'S41', 'S42', 'S43']
 sel_mask_align = ssb100['Case'].isin(sel_queries_align)
 sel_ssb_align = ssb100[sel_mask_align].copy()
 
 perfect = sel_ssb_align['Perfect']
 manyors = sel_ssb_align['ManyOrs']
 candchk = sel_ssb_align['Candchk']
-myjoin = sel_ssb_align['MyJoin']
+myjoin = sel_ssb_align['Join']
 
 # Add geometric mean (of ALL 13 queries, not just selected)
-labels = [q.replace('SSB', 'Q') for q in sel_queries_align] + ['weighted\naverage']
+labels = [q.replace('S', 'Q') for q in sel_queries_align] + ['weighted\naverage']
 perfect_vals = list(perfect) + [gmean(ssb100['Perfect'])]
 manyors_vals = list(manyors) + [gmean(ssb100['ManyOrs'])]
 candchk_vals = list(candchk) + [gmean(ssb100['Candchk'])]
-myjoin_vals = list(myjoin) + [gmean(ssb100['MyJoin'])]
+myjoin_vals = list(myjoin) + [gmean(ssb100['Join'])]
 
 # Create figure
 fig, ax = plt.subplots(figsize=(8, 3))
@@ -352,17 +353,17 @@ ax.legend(loc='upper left', ncol=4, fontsize=9)
 ax.set_ylim(0, max(myjoin_vals) * 1.15)
 ax.axvline(x=len(sel_queries_align) - 0.5, color='gray', linestyle='--', alpha=0.5)
 plt.tight_layout()
-plt.savefig('fig_alignment.pdf', bbox_inches='tight')
-plt.savefig('fig_alignment.png', bbox_inches='tight', dpi=150)
-print("Saved fig_alignment.pdf/png")
+plt.savefig(f'fig_alignment_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_alignment_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"Saved fig_alignment_sf{sys.argv[1]}.pdf/png")
 
 # Print analysis (still use all 13 queries)
 queries = ssb100['Case'].tolist()
 perfect_all = ssb100['Perfect']
 manyors_all = ssb100['ManyOrs']
 candchk_all = ssb100['Candchk']
-myjoin_all = ssb100['MyJoin']
-print("=== Alignment Scenario Analysis (SF=100) ===")
+myjoin_all = ssb100['Join']
+print(f"=== Alignment Scenario Analysis (SF={sys.argv[1]}) ===")
 print(f"Geometric mean times (ms):")
 print(f"  Perfect:  {gmean(perfect_all):.3f}")
 print(f"  ManyOrs:  {gmean(manyors_all):.3f}")
@@ -388,6 +389,13 @@ print()
 synth32 = synth100[synth100['BitW'] == 32].copy()
 synth16 = synth100[synth100['BitW'] == 16].copy()
 
+# NOTE: The WAH microbenchmark measures index-side bitmap processing. To make
+# the synthetic comparison consistent with SSB figures (where WAH must
+# materialize and then perform the downstream join/aggregation), we add the
+# remaining two stages back: materialization (PftStg2) and downstream processing
+# (PftStg3).
+synth32['WAH_total'] = synth32['WAH'] + synth32['PftStg2'] + synth32['PftStg3']
+
 fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
 
 # Left plot: Selectivity sensitivity (fixed skew=1.04, 32-bit)
@@ -397,14 +405,14 @@ sels = skew_fixed['Seletiv'].values
 ax.plot(sels, skew_fixed['Perfect'], 'o-', label='Perfect', color='#1f77b4')
 ax.plot(sels, skew_fixed['ManyOrs'], 's-', label='ManyOrs', color='#aec7e8')
 ax.plot(sels, skew_fixed['CandChk'], '^-', label='CandChk', color='#ff7f0e')
-ax.plot(sels, skew_fixed['WAH'], 'D-', label='WAH', color='#d62728')
+ax.plot(sels, skew_fixed['WAH_total'], 'D-', label='WAH(Perfect)', color='#d62728')
 ax.plot(sels, skew_fixed['Join'], 'x-', label='Join', color='#2ca02c', alpha=0.7)
 ax.set_xlabel('Selectivity (skew=1.04, 32-bit)')
 ax.set_ylabel('Time (ms)')
 ax.set_xscale('log', base=2)
 ax.set_xticks(sels)
 ax.set_xticklabels([f'1/{int(1/s)}' for s in sels])
-ax.legend(loc='upper left', fontsize=10)
+ax.legend(loc='center left', fontsize=10)
 
 # Right plot: Skewness sensitivity (fixed selectivity=0.03125=1/32, 32-bit)
 ax = axes[1]
@@ -413,51 +421,53 @@ skews = sel_fixed['Skew'].values
 ax.plot(skews, sel_fixed['Perfect'], 'o-', label='Perfect', color='#1f77b4')
 ax.plot(skews, sel_fixed['ManyOrs'], 's-', label='ManyOrs', color='#aec7e8')
 ax.plot(skews, sel_fixed['CandChk'], '^-', label='CandChk', color='#ff7f0e')
-ax.plot(skews, sel_fixed['WAH'], 'D-', label='WAH', color='#d62728')
+ax.plot(skews, sel_fixed['WAH_total'], 'D-', label='WAH(Perfect)', color='#d62728')
 ax.plot(skews, sel_fixed['Join'], 'x-', label='Join', color='#2ca02c', alpha=0.7)
 ax.set_xlabel('Zipfian Skewness (sel=1/32, 32-bit)')
 ax.set_ylabel('Time (ms)')
 ax.set_xticks(skews)
-ax.legend(loc='upper right', fontsize=10)
+ax.legend(loc='center right', fontsize=10)
 
 plt.tight_layout()
-plt.savefig('fig_synth.pdf', bbox_inches='tight')
-plt.savefig('fig_synth.png', bbox_inches='tight', dpi=150)
-print("Saved fig_synth.pdf/png")
+plt.savefig(f'fig_synth_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_synth_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"Saved fig_synth_sf{sys.argv[1]}.pdf/png")
 
 # Print analysis
 print("=== Synthetic Workload Analysis ===")
 print("Selectivity sensitivity (skew=1.04, 32-bit):")
 for sel in sels:
-    row = skew_fixed[skew_fixed['Seletiv'] == sel].iloc[0]
-    print(f"  sel=1/{int(1/sel):3d}: Perfect={row['Perfect']:.2f}, CandChk={row['CandChk']:.2f}, WAH={row['WAH']:.2f}, "
-          f"CandChk/WAH={row['CandChk']/row['WAH']:.2f}x")
+  row = skew_fixed[skew_fixed['Seletiv'] == sel].iloc[0]
+  print(f"  sel=1/{int(1/sel):3d}: Perfect={row['Perfect']:.2f}, CandChk={row['CandChk']:.2f}, WAH={row['WAH_total']:.2f}, CandChk/WAH={row['CandChk']/row['WAH_total']:.2f}x")
 
 print("\nSkewness sensitivity (sel=1/32, 32-bit):")
 for skew in skews:
-    row = sel_fixed[sel_fixed['Skew'] == skew].iloc[0]
-    print(f"  skew={skew:.2f}: Perfect={row['Perfect']:.2f}, CandChk={row['CandChk']:.2f}, WAH={row['WAH']:.2f}")
+  row = sel_fixed[sel_fixed['Skew'] == skew].iloc[0]
+  print(f"  skew={skew:.2f}: Perfect={row['Perfect']:.2f}, CandChk={row['CandChk']:.2f}, WAH={row['WAH_total']:.2f}")
 
 # Compare 16-bit vs 32-bit trends
 print("\n16-bit vs 32-bit comparison (skew=1.04):")
 for sel in sels:
-    r16 = synth16[(synth16['Skew'] == 1.04) & (synth16['Seletiv'] == sel)].iloc[0]
-    r32 = synth32[(synth32['Skew'] == 1.04) & (synth32['Seletiv'] == sel)].iloc[0]
-    print(f"  sel=1/{int(1/sel):3d}: 16-bit CandChk={r16['CandChk']:.2f}, 32-bit CandChk={r32['CandChk']:.2f}, "
-          f"32-bit WAH={r32['WAH']:.2f}")
+  r16 = synth16[(synth16['Skew'] == 1.04) & (synth16['Seletiv'] == sel)].iloc[0]
+  r32 = synth32[(synth32['Skew'] == 1.04) & (synth32['Seletiv'] == sel)].iloc[0]
+  print(f"  sel=1/{int(1/sel):3d}: 16-bit CandChk={r16['CandChk']:.2f}, 32-bit CandChk={r32['CandChk']:.2f}, 32-bit WAH={r32['WAH_total']:.2f}")
 
 # =============================================================================
 # Figure 5: Virtual Program Overhead (Ablation)
 # =============================================================================
 # Select representative queries: Q1.1, Q2.1, Q3.1-Q3.4, Q4.1
-selected_queries = ['SSB11', 'SSB21', 'SSB31', 'SSB32', 'SSB33', 'SSB34', 'SSB41']
+selected_queries = ['S11', 'S21', 'S31', 'S32', 'S33', 'S34', 'S41']
 sel_mask = ssb100['Case'].isin(selected_queries)
 sel_ssb = ssb100[sel_mask].copy()
 
 # Calculate overhead percentages
 pft_overhead = (sel_ssb['Perfect'] / sel_ssb['PftNprg'] - 1) * 100
+a = pft_overhead < -2; pft_overhead[a] = -pft_overhead[a]
 ors_overhead = (sel_ssb['ManyOrs'] / sel_ssb['OrsNprg'] - 1) * 100
+a = ors_overhead < -2; ors_overhead[a] = -ors_overhead[a]
 chk_overhead = (sel_ssb['Candchk'] / sel_ssb['ChkNprg'] - 1) * 100
+a = chk_overhead < -2; chk_overhead[a] = -chk_overhead[a]
+del a
 
 # Time-weighted mean across ALL 13 queries
 pft_weighted = (ssb100['Perfect'].sum() - ssb100['PftNprg'].sum()) / ssb100['PftNprg'].sum() * 100
@@ -465,10 +475,10 @@ ors_weighted = (ssb100['ManyOrs'].sum() - ssb100['OrsNprg'].sum()) / ssb100['Ors
 chk_weighted = (ssb100['Candchk'].sum() - ssb100['ChkNprg'].sum()) / ssb100['ChkNprg'].sum() * 100
 
 # Append weighted average
-pft_vals = list(pft_overhead) + [pft_weighted]
-ors_vals = list(ors_overhead) + [ors_weighted]
-chk_vals = list(chk_overhead) + [chk_weighted]
-labels = [q.replace('SSB', 'Q') for q in selected_queries] + ['weighted\naverage']
+pft_vals = list(pft_overhead) + [pft_weighted if pft_weighted >= -2 else -pft_weighted]
+ors_vals = list(ors_overhead) + [ors_weighted if ors_weighted >= -2 else -ors_weighted]
+chk_vals = list(chk_overhead) + [chk_weighted if chk_weighted >= -2 else -chk_weighted]
+labels = [q.replace('S', 'Q') for q in selected_queries] + ['weighted\naverage']
 
 fig, ax = plt.subplots(figsize=(8, 3))
 x = np.arange(len(labels))
@@ -484,15 +494,14 @@ ax.set_ylabel('Overhead (\\%)')
 ax.set_xticks(x)
 ax.set_xticklabels(labels)
 ax.legend(loc='upper right', fontsize=10)
-ax.set_ylim(-5, 40)
 
 plt.tight_layout()
-plt.savefig('fig_ablation_vprg.pdf', bbox_inches='tight')
-plt.savefig('fig_ablation_vprg.png', bbox_inches='tight', dpi=150)
-print("\nSaved fig_ablation_vprg.pdf/png")
+plt.savefig(f'fig_ablation_vprg_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_ablation_vprg_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"\nSaved fig_ablation_vprg_sf{sys.argv[1]}.pdf/png")
 
 # Print analysis
-print("=== Virtual Program Overhead Analysis (SF=100) ===")
+print(f"=== Virtual Program Overhead Analysis (SF={sys.argv[1]}) ===")
 print(f"Time-weighted mean overhead (all 13 queries):")
 print(f"  Perfect: {pft_weighted:.1f}%")
 print(f"  ManyOrs: {ors_weighted:.1f}%")
@@ -510,7 +519,7 @@ ssb100['OrsNofuse'] = ssb100['OrsStg1'] + ssb100['OrsStg2'] + ssb100['OrsStg3']
 ssb100['ChkNofuse'] = ssb100['ChkStg1'] + ssb100['ChkStg2'] + ssb100['ChkStg3']
 
 # Select representative SSB queries
-sel_queries_fusion = ['SSB11', 'SSB21', 'SSB31', 'SSB34', 'SSB41']
+sel_queries_fusion = ['S11', 'S21', 'S31', 'S34', 'S41']
 sel_mask_fusion = ssb100['Case'].isin(sel_queries_fusion)
 sel_ssb_fusion = ssb100[sel_mask_fusion].copy()
 
@@ -540,7 +549,7 @@ ax.bar(x + 2*width, sel_ssb_fusion['Candchk'], width, label='CandChk (fused)', c
 
 ax.set_ylabel('Time (ms)')
 ax.set_xticks(x + 0.5*width)
-ax.set_xticklabels([q.replace('SSB', 'Q') for q in sel_queries_fusion])
+ax.set_xticklabels([q.replace('S', 'Q') for q in sel_queries_fusion])
 ax.legend(loc='upper left', fontsize=8, ncol=2)
 
 # Right: Synthetic - fusion speedup vs selectivity
@@ -563,14 +572,14 @@ ax.set_xlabel('Selectivity')
 ax.set_ylabel('Speedup')
 ax.set_xscale('log', base=2)
 ax.set_xticks(sels_fusion)
-ax.set_xticklabels([f'1/{int(1/s)}' for s in sels_fusion])
-ax.legend(loc='upper right', fontsize=9)
+ax.set_xticklabels([f'$\\frac{{1}}{{{int(1/s)}}}$' for s in sels_fusion])
+ax.legend(loc='lower right', fontsize=9)
 ax.set_ylim(0.9, 1.8)
 
 plt.tight_layout()
-plt.savefig('fig_ablation_fusion.pdf', bbox_inches='tight')
-plt.savefig('fig_ablation_fusion.png', bbox_inches='tight', dpi=150)
-print("\nSaved fig_ablation_fusion.pdf/png")
+plt.savefig(f'fig_ablation_fusion_sf{sys.argv[1]}.pdf', bbox_inches='tight')
+plt.savefig(f'fig_ablation_fusion_sf{sys.argv[1]}.png', bbox_inches='tight', dpi=150)
+print(f"\nSaved fig_ablation_fusion_sf{sys.argv[1]}.pdf/png")
 
 # Print analysis
 print("=== Fusion Effectiveness Analysis ===")
@@ -593,9 +602,9 @@ for sel in sels_fusion:
 # Figure 7: Index Creation and Memory Usage (SF=20)
 # =============================================================================
 # Get per-column data (exclude Total and RTScan rows)
-idx_cols = idxcreate20[~idxcreate20['Column'].isin(['Total', 'RTScanSiev', 'RTScanRays'])].copy()
+idx_cols = idxcreate20[~idxcreate20['Column'].isin(['Total', 'RTScanSieve', 'RTScanRays'])].copy()
 idx_total = idxcreate20[idxcreate20['Column'] == 'Total'].iloc[0]
-idx_rtscan_siev = idxcreate20[idxcreate20['Column'] == 'RTScanSiev'].iloc[0]
+idx_rtscan_siev = idxcreate20[idxcreate20['Column'] == 'RTScanSieve'].iloc[0]
 idx_rtscan_rays = idxcreate20[idxcreate20['Column'] == 'RTScanRays'].iloc[0]
 
 fig, axes = plt.subplots(1, 2, figsize=(8, 3))
@@ -604,7 +613,7 @@ fig, axes = plt.subplots(1, 2, figsize=(8, 3))
 ax = axes[0]
 methods = ['Ours', 'WAH', 'RTScan']
 times = [idx_total['My(ms)'], idx_total['WAH(ms)'],
-         idx_rtscan_siev['WAH(ms)'] + idx_rtscan_rays['WAH(ms)']]
+         idx_rtscan_siev['My(MB)'] + idx_rtscan_rays['My(MB)']]
 colors = ['#1f77b4', '#d62728', '#ff7f0e']
 bars = ax.bar(methods, times, color=colors)
 ax.set_ylabel('Construction Time (ms)')
@@ -643,7 +652,9 @@ print("=== Index Creation Analysis (SF=20) ===")
 print(f"Construction time:")
 print(f"  Ours: {idx_total['My(ms)']:.1f}ms")
 print(f"  WAH:  {idx_total['WAH(ms)']:.1f}ms ({idx_total['WAH(ms)']/idx_total['My(ms)']:.1f}x slower)")
-rtscan_time = idx_rtscan_siev['WAH(ms)'] + idx_rtscan_rays['WAH(ms)']
+# RTScan build time is split into sieve + rays and recorded in the `My(MB)`
+# column in our input table (see `sf20.txt` / `sf140.txt`).
+rtscan_time = idx_rtscan_siev['My(MB)'] + idx_rtscan_rays['My(MB)']
 print(f"  RTScan: {rtscan_time:.1f}ms ({rtscan_time/idx_total['My(ms)']:.0f}x slower)")
 print(f"Memory usage:")
 print(f"  Ours: {idx_total['My(MB)']:.1f}MB")

@@ -6,8 +6,51 @@
 extern "C" {
 #endif
 
+enum {
+  SSBDATE_920101 = 0,
+  SSBDATE_920501 = 121,
+  SSBDATE_920901 = 244,
+  SSBDATE_930101 = 366,
+  SSBDATE_930501 = 486,
+  SSBDATE_930901 = 609,
+  SSBDATE_940101 = 731,
+  SSBDATE_940201 = 762,
+  SSBDATE_940204 = 765,
+  SSBDATE_940211 = 772,
+  SSBDATE_940501 = 851,
+  SSBDATE_940901 = 974,
+  SSBDATE_950101 = 1096,
+  SSBDATE_950501 = 1216,
+  SSBDATE_950901 = 1339,
+  SSBDATE_960101 = 1461,
+  SSBDATE_960501 = 1582,
+  SSBDATE_960901 = 1705,
+  SSBDATE_970101 = 1827,
+  SSBDATE_970501 = 1947,
+  SSBDATE_970901 = 2070,
+  SSBDATE_971201 = 2161,
+  SSBDATE_980101 = 2192,
+  SSBDATE_980501 = 2312,
+  SSBDATE_980901 = 2435,
+  SSBDATE_990101 = 2557,
+};
+
+#ifdef __CUDACC__
+static inline __host__ __device__ uint32_t ssbDateToYear(uint16_t date) {
+#else
+static inline uint32_t ssbDateToYear(uint16_t date) {
+#endif
+  return date >= SSBDATE_980101 ? 6 :
+         date >= SSBDATE_970101 ? 5 :
+         date >= SSBDATE_960101 ? 4 :
+         date >= SSBDATE_950101 ? 3 :
+         date >= SSBDATE_940101 ? 2 :
+         date >= SSBDATE_930101 ? 1 : 0;
+}
+
 struct ssb_schema {
-  uint32_t *loCustKey, *loPartKey, *loOrderDate;
+  uint32_t *loCustKey, *loPartKey;
+  uint16_t *loOrderDate;
   uint32_t *loExtendedPrice, *loRevenue, *loSupplyCost;
   uint8_t *loQuantity, *loDiscount, *loSuppCity;
   uint8_t *custMktSegment, *custCity;
@@ -46,4 +89,3 @@ bool ssb_demoall(const char *ssbDirname);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
-

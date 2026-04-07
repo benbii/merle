@@ -3,8 +3,8 @@
 using namespace mybmpidx;
 using cuda::ceil_div;
 
-void s1dev(const struct ssb_schema *dat, size_t factsz, uint32_t dateMin,
-           uint32_t dateMax, uint8_t discntMin, uint8_t discntMax,
+void s1dev(const struct ssb_schema *dat, size_t factsz, uint16_t dateMin,
+           uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
            uint8_t qtyMin, uint8_t qtyMax, uint32_t *red_out) {
   // must bring pointers in `*dat` to __constant__ memory
   auto op = [=, dat = *dat] __device__ (uint i) {
@@ -44,10 +44,8 @@ void s2dev(const struct ssb_schema *dat, size_t factsz, uint32_t pMfgrMin,
     if (mfgr < pMfgrMin || mfgr >= pMfgrMax)
       return ret;
     // Extract year from date (YYYYMMDD format)
-    uint32_t year = dat.loOrderDate[i] / 10000;
-    // GROUP BY group position calculation:
-    // (mfgr - mfgrMin) + (date / 10000 - 1992) * (mfgrMax - mfgrMin)
-    ret.y = (mfgr - pMfgrMin) + (year - 1992) * (pMfgrMax - pMfgrMin);
+    uint32_t year = ssbDateToYear(dat.loOrderDate[i]);
+    ret.y = (mfgr - pMfgrMin) + year * (pMfgrMax - pMfgrMin);
     ret.x = dat.loRevenue[i];
     return ret;
   };
@@ -59,7 +57,7 @@ void s2dev(const struct ssb_schema *dat, size_t factsz, uint32_t pMfgrMin,
 
 void s3dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint32_t dateMin, uint32_t dateMax, uint32_t *grpby_out, size_t nr_grp) {
+           uint16_t dateMin, uint16_t dateMax, uint32_t *grpby_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i) {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range
@@ -67,7 +65,7 @@ void s3dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
     if (sCity < sCityMin || sCity >= sCityMax)
       return ret;
     // Filter by date range
-    uint32_t date = dat.loOrderDate[i];
+    uint16_t date = dat.loOrderDate[i];
     if (date < dateMin || date >= dateMax)
       return ret;
     // Join with customer dimension to get customer city
@@ -83,8 +81,8 @@ void s3dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
       cCity /= 10; cCityMinScaled /= 10; cCityMaxScaled /= 10;
       sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const uint a = cCityMaxScaled - cCityMinScaled;
     const uint b = sCityMaxScaled - sCityMinScaled;
     ret.y = a * b * (year - yearMin) + a * (cCity - cCityMinScaled) +
@@ -100,8 +98,8 @@ void s3dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
 
 void s4dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
-           uint16_t pMfgrMin, uint16_t pMfgrMax, uint32_t dateMin,
-           uint32_t dateMax, uint32_t *grpby_out, size_t nr_grp) {
+           uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
+           uint16_t dateMax, uint32_t *grpby_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i) {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range  
@@ -109,7 +107,7 @@ void s4dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
     if (sCity < sCityMin || sCity >= sCityMax)
       return ret;
     // Filter by date range
-    uint32_t date = dat.loOrderDate[i];
+    uint16_t date = dat.loOrderDate[i];
     if (date < dateMin || date >= dateMax)
       return ret;
     // Join with customer dimension to get customer city
@@ -132,8 +130,8 @@ void s4dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
     if (pMfgrMax - pMfgrMin >= 200) {
       pMfgr /= 40; pMfgrMinScaled /= 40; pMfgrMaxScaled /= 40;
     }
-    const uint32_t year = date / 10000;
-    const uint32_t yearMin = dateMin / 10000;
+    const uint32_t year = ssbDateToYear(date);
+    const uint32_t yearMin = ssbDateToYear(dateMin);
     const uint a = sCityMaxScaled - sCityMinScaled;
     const uint b = pMfgrMaxScaled - pMfgrMinScaled;
     ret.y = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) + (pMfgr - pMfgrMinScaled);
@@ -161,9 +159,9 @@ uint32_t *ssb_demojoin(const struct ssb_schema *dat, size_t factSz) {
   printf(#name"\t%.4f\n", msec / 100);
 
   printf("\nCase\tJoin\n");
-  T(s1dev(dat, factSz, 19930000, 19940000, 1, 4, 0, 25, res), SSB11);
-  T(s1dev(dat, factSz, 19940100, 19940200, 4, 7, 26, 36, res + 1), SSB12);
-  T(s1dev(dat, factSz, 19940204, 19940211, 5, 8, 26, 36, res + 2), SSB13);
+  T(s1dev(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res), SSB11);
+  T(s1dev(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1), SSB12);
+  T(s1dev(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2), SSB13);
 
   T(s2dev(dat, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21), SSB21);
   T(s2dev(dat, factSz, 260, 268, 200, 250, res + SUMGRP_S1 + NGRP_S21,
@@ -171,22 +169,21 @@ uint32_t *ssb_demojoin(const struct ssb_schema *dat, size_t factSz) {
   T(s2dev(dat, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22,
           NGRP_S23), SSB23);
 
-  T(s3dev(dat, factSz, 200, 250, 200, 250, 19920000, 19980000, res + SUMGRP_S2,
+  T(s3dev(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101, res + SUMGRP_S2,
           NGRP_S31), SSB31);
-  T(s3dev(dat, factSz, 190, 200, 190, 200, 19920000, 19980000,
+  T(s3dev(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
           res + SUMGRP_S2 + NGRP_S31, NGRP_S32), SSB32);
-  T(s3dev(dat, factSz, 51, 55, 51, 55, 19920000, 19980000,
+  T(s3dev(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
           res + SUMGRP_S2 + NGRP_S31 + NGRP_S32, NGRP_S33), SSB33);
-  T(s3dev(dat, factSz, 51, 55, 51, 55, 19971200, 19980000,
+  T(s3dev(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
           res + SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33, NGRP_S34), SSB34);
 
-  T(s4dev(dat, factSz, 150, 200, 150, 200, 0, 400, 19920000, 19990000,
+  T(s4dev(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
           res + SUMGRP_S3, NGRP_S41), SSB41);
-  T(s4dev(dat, factSz, 150, 200, 150, 200, 0, 400, 19970000, 19990000,
+  T(s4dev(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
           res + SUMGRP_S3 + NGRP_S41, NGRP_S42), SSB42);
-  T(s4dev(dat, factSz, 150, 200, 190, 200, 120, 160, 19970000, 19990000,
+  T(s4dev(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101,
           res + SUMGRP_S3 + NGRP_S41 + NGRP_S42, NGRP_S43), SSB43);
   cudaEventDestroy(start); cudaEventDestroy(stop);
   return res;
 }
-
