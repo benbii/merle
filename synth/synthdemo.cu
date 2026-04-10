@@ -161,9 +161,7 @@ float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
               .fk = {nullptr, nullptr, dat->fkey},
               .attr = {dat->factattr1, dat->factattr2, dat->dimattr1}};
   const vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0, 0}, {vprg::ORM, 0, 1, 0}, {vprg::ANDM, 0, 2, 0},
-      {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0}, {vprg::END, 0, 0, 0},
-  };
+      {vprg::ORM, 0, 0, 0}, {vprg::ORM, 0, 1, 0}, {vprg::ANDM, 0, 2, 0}};
   vprg p = r.perfect(instrs);
   auto op = [=, dat = *dat] __device__(uint i, bool c) {
     return _op(i, dat, fa1lo, fa1hi, fa2lo, fa2hi, da1lo, da1hi, c);

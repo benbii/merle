@@ -8,11 +8,7 @@ extern "C" {
 
 enum {
   SSBDATE_920101 = 0,
-  SSBDATE_920501 = 121,
-  SSBDATE_920901 = 244,
   SSBDATE_930101 = 366,
-  SSBDATE_930501 = 486,
-  SSBDATE_930901 = 609,
   SSBDATE_940101 = 731,
   SSBDATE_940201 = 762,
   SSBDATE_940204 = 765,
@@ -20,18 +16,10 @@ enum {
   SSBDATE_940501 = 851,
   SSBDATE_940901 = 974,
   SSBDATE_950101 = 1096,
-  SSBDATE_950501 = 1216,
-  SSBDATE_950901 = 1339,
   SSBDATE_960101 = 1461,
-  SSBDATE_960501 = 1582,
-  SSBDATE_960901 = 1705,
   SSBDATE_970101 = 1827,
-  SSBDATE_970501 = 1947,
-  SSBDATE_970901 = 2070,
   SSBDATE_971201 = 2161,
   SSBDATE_980101 = 2192,
-  SSBDATE_980501 = 2312,
-  SSBDATE_980901 = 2435,
   SSBDATE_990101 = 2557,
 };
 
@@ -57,6 +45,26 @@ struct ssb_schema {
   uint16_t *partName, *partMfgr;
   uint8_t *partColor, *partType, *partSize, *partContainer;
 };
+size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
+                const char *ssbDirname);
+void ssb_free(struct ssb_schema* host, struct ssb_schema* dev);
+
+struct ssb_bmp {
+  // For high bin counts, prefer managed memory and prefetch, and chunking the
+  // query into say SF=10, 60M-row parts. Prefetch the next part while
+  // processing the previous, thereby hiding all HToD latencies.
+  // However that's such a hassle for this prototype. Create useful bins only!
+  uint32_t *dateSparse[7], *dateDense[3];
+  uint32_t *discntSparse[4], *discntDense[11];
+  uint32_t *qtySparse[5], *qtyDense[10];
+  // Hacky like Date column
+  uint32_t *pMfgrSparse[5], *pMfgrDense[1];
+  uint32_t *sCitySparse[5], *sCityDense[25];
+  uint32_t *cCitySparse[5], *cCityDense[25];
+};
+void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
+                   size_t factSz, struct ssb_bmp *devOut);
+void ssb_bmpfree(struct ssb_bmp *devOut);
 
 // Q1.{1,2,3} - 1 group each
 // Q2.1 7*40=280, Q2.2 7*8=56, Q2.3 7*1=7
@@ -72,20 +80,23 @@ enum {
   SUMGRP_ALL = SUMGRP_S3 + 350 + 100 + 800
 };
 
-size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
-                const char *ssbDirname);
-void ssb_free(struct ssb_schema* host, struct ssb_schema* dev);
-
-uint32_t *ssb_demoref(const struct ssb_schema *dat, size_t factSz);
-uint32_t *ssb_demojoin(const struct ssb_schema *dat, size_t factSz);
-uint32_t *ssb_demobmp(const struct ssb_schema *dat, size_t factSz);
-uint32_t *ssb_demobmp_abl(const struct ssb_schema *dat, size_t factSz);
-void ssb_demowah(const struct ssb_schema *host, const struct ssb_schema *dat,
-                 size_t factSz);
-void ssb_democreate(const struct ssb_schema *host, const struct ssb_schema *dat,
-                    size_t factSz);
+uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_bmp_control_abl(const struct ssb_schema *dat, size_t factSz);
+void ssb_wah(const struct ssb_schema *host, const struct ssb_schema *dat,
+             size_t factSz);
 bool ssb_demoall(const char *ssbDirname);
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+// lambdas used across files
+/* struct s1op { // not slop I swear :D
+  uint16_t dateMin, datemax, *loOrderDate;
+  uint8_t discntMin, discntMax, *loDiscount;
+  uint8_t qtyMin, qtyMax, *loQuantity;
+  uint32_t *extendedPrice;
+}; */
+
 #endif

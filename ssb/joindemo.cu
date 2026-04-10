@@ -144,7 +144,7 @@ void s4dev(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
       factsz, grpby_out, nr_grp, op);
 }
 
-uint32_t *ssb_demojoin(const struct ssb_schema *dat, size_t factSz) {
+uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz) {
   uint32_t *res;
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
   cudaEvent_t start, stop; float msec;
@@ -159,7 +159,7 @@ uint32_t *ssb_demojoin(const struct ssb_schema *dat, size_t factSz) {
   printf(#name"\t%.4f\n", msec / 100);
 
   printf("\nCase\tJoin\n");
-  T(s1dev(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res), SSB11);
+  T(s1dev(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res), SSB11);
   T(s1dev(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1), SSB12);
   T(s1dev(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2), SSB13);
 

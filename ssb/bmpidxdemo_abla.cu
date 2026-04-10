@@ -4,6 +4,8 @@ using namespace mybmpidx;
 using namespace mybmpidx::abla;
 using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
+static constexpr auto AND = vprg::AND, OR = vprg::OR, ANDM = vprg::ANDM,
+                      ORM = vprg::ORM, END = vprg::END;
 
 // lazy
 static uint *d_possi, *d_uncert, *d_onelist;
@@ -81,17 +83,14 @@ void s1abl(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
               .fk = {nullptr, nullptr, nullptr},
               .attr = {dat->loOrderDate, dat->loDiscount, dat->loQuantity}};
   constexpr size_t nr_grp = 1;
-  vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0}, {vprg::ANDM, 0, 1}, {vprg::ANDM, 0, 2},
-      {vprg::END, 0, 0}, {vprg::END, 0, 0},  {vprg::END, 0, 0},
-  };
+  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
   PLEASE
 
 }
 
 // We need nr_groups for CUDA kernels
-void s2abl(const struct ssb_schema *dat, uint factsz, uint32_t pMfgrMin,
-           uint32_t pMfgrMax, uint8_t sCityMin, uint8_t sCityMax,
+void s2abl(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
+           uint16_t pMfgrMax, uint8_t sCityMin, uint8_t sCityMax,
            uint *grp_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
     uint2 ret; ret.y = ELIMINATED;
@@ -116,10 +115,7 @@ void s2abl(const struct ssb_schema *dat, uint factsz, uint32_t pMfgrMin,
               .dimsz = {nodim, nodim},
               .fk = {dat->loPartKey, nullptr},
               .attr = {dat->partMfgr, dat->loSuppCity}};
-  vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0}, {vprg::ANDM, 0, 1}, {vprg::END, 0, 2},
-      {vprg::END, 0, 0}, {vprg::END, 0, 0},  {vprg::END, 0, 0},
-  };
+  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}};
   PLEASE
 }
 
@@ -165,10 +161,7 @@ void s3abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .dimsz = {nodim, nodim, nodim},
               .fk = {dat->loCustKey, nullptr, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->loOrderDate}};
-  vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0}, {vprg::ANDM, 0, 1}, {vprg::ANDM, 0, 2},
-      {vprg::END, 0, 0}, {vprg::END, 0, 0},  {vprg::END, 0, 0},
-  };
+  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
   PLEASE
 }
 
@@ -178,7 +171,7 @@ void s4abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
   auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
     uint2 ret; ret.y = ELIMINATED;
-    // Filter by supplier city range  
+    // Filter by supplier city range
     uint8_t sCity = dat.loSuppCity[i];
     if (chk && (sCity < sCityMin || sCity >= sCityMax))
       return ret;
@@ -223,16 +216,13 @@ void s4abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .dimsz = {nodim, nodim, nodim, nodim},
               .fk = {dat->loCustKey, nullptr, dat->loPartKey, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->partMfgr, dat->loOrderDate}};
-  vprg::instr instrs[MAXNINSTR] = {
-      {vprg::ORM, 0, 0}, {vprg::ANDM, 0, 1}, {vprg::ANDM, 0, 2},
-      {vprg::ANDM, 0, 3}, {vprg::END, 0, 0},  {vprg::END, 0, 0},
-  };
+  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}, {ANDM, 0, 3}};
   if (dateMin <= SSBDATE_920101 && dateMax >= SSBDATE_990101)
     r.attr[3] = nullptr, instrs[3].opcode = vprg::END;
   PLEASE
 }
 
-uint32_t *ssb_demobmp_abl(const struct ssb_schema *dat, size_t factSz) {
+uint32_t *ssb_bmp_control_abl(const struct ssb_schema *dat, size_t factSz) {
   uint32_t *res;
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
   cudaMalloc(&d_possi, ceil_div(factSz, 32) * sizeof(uint32_t));

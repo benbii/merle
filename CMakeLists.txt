@@ -24,7 +24,7 @@ find_package(OpenMP REQUIRED)
 add_executable(mydemo
     main.c bmpidx_create.cu
     ssb/cpuref.c ssb/joindemo.cu ssb/bmpidxdemo.cu ssb/bmpidxdemo_abla.cu
-    ssb/index_creation_demo.cu ssb/wah_roast.cu
+    ssb/bmpidx_create.cu ssb/wah_roast.cu
     synth/cpuref.c synth/synthdemo.cu synth/window_zipf.c synth/wah_roast.cu
     merle/wahGpuCmprs.cu merle/wahGpuDirect.cu
 )

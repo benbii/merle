@@ -13,7 +13,8 @@ static void* __cum(size_t sz) {
 
 namespace mybmpidx {
 
-// ONLY FREE OUT[0]!!!
+// ONLY cudaFree out[0]!!!
+// `out` is a host array of pointers to device addresses
 size_t create_bin(const uint *__restrict__ fk, const void *__restrict__ attr,
                   size_t nbit, uint factsz, uint dimsz, const uint64_t *min,
                   const uint64_t *max, size_t ncol, uint **out) {

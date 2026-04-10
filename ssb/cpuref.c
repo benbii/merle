@@ -242,7 +242,7 @@ void s4ref(const struct ssb_schema *dat, size_t factsz, uint8_t cCityMin,
   }
 }
 
-uint32_t *ssb_demoref(const struct ssb_schema *dat, size_t factSz) {
+uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz) {
   uint32_t *res = calloc(SUMGRP_ALL + 1, sizeof(uint32_t));
   assert(res != NULL);
 
@@ -308,14 +308,15 @@ bool ssb_demoall(const char *ssbDirname) {
   size_t factSz = ssb_load(&host_dat, &dev_dat, ssbDirname);
 
   // Run the index creation and WAH baseline demo first
-  ssb_democreate(&host_dat, &dev_dat, factSz);
-  ssb_demowah(&host_dat, &dev_dat, factSz);
+  ssb_wah(&host_dat, &dev_dat, factSz);
+  struct ssb_bmp *bmp = malloc(sizeof(struct ssb_bmp));
+  ssb_bmpcreate(&host_dat, &dev_dat, factSz, bmp);
 
-  uint32_t *host_res = ssb_demoref(&host_dat, factSz), *dev_res;
+  uint32_t *host_res = ssb_cpujoin(&host_dat, factSz), *dev_res;
   uint32_t *xfertmp = malloc(SUMGRP_ALL * sizeof(uint32_t));
   bool matches = true;
 
-  dev_res = ssb_demojoin(&dev_dat, factSz);
+  dev_res = ssb_gpujoin(&dev_dat, factSz);
   fflush(stdout);
   cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
              cudaMemcpyDeviceToHost);
@@ -328,7 +329,11 @@ bool ssb_demoall(const char *ssbDirname) {
   }
   cudaFree(dev_res);
 
-  dev_res = ssb_demobmp_abl(&dev_dat, factSz);
+  // TODO: fixed-layout here
+  ssb_bmpfree(bmp);
+  free(bmp);
+
+  dev_res = ssb_bmp_control_abl(&dev_dat, factSz);
   fflush(stdout);
   cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
              cudaMemcpyDeviceToHost);
@@ -341,7 +346,7 @@ bool ssb_demoall(const char *ssbDirname) {
   }
   cudaFree(dev_res);
 
-  dev_res = ssb_demobmp(&dev_dat, factSz);
+  dev_res = ssb_bmp_control(&dev_dat, factSz);
   fflush(stdout);
   cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
              cudaMemcpyDeviceToHost);

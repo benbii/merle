@@ -234,7 +234,7 @@ void s4wah(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
   printf("%.4f\t99999.9\n", totalTime / ndup);
 }
 
-void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
+void ssb_wah(const struct ssb_schema *hostdat, const ssb_schema *dat,
                  size_t factSz) {
   // Find dimension sizes by scanning for maximum keys
   uint32_t maxPartKey = 0, maxCustKey = 0;
@@ -261,7 +261,7 @@ void ssb_demowah(const struct ssb_schema *hostdat, const ssb_schema *dat,
   } catch (std::runtime_error &e) {
     poolSz += 1ul << 30;
     fprintf(stderr, "trying %zu GiB VRAM\n", poolSz >> 30);
-    return ssb_demowah(hostdat, dat, factSz);
+    return ssb_wah(hostdat, dat, factSz);
   } catch (mgpu::cuda_exception_t &e) {
     fprintf(stderr, "Skipping WAH cause it sucks: %s\n", e.what());
     return;

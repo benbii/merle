@@ -121,7 +121,7 @@ __global__ void bmpcreate(uint maxid, uint **out, Fetch fetch, Compar compar,
 }
 
 // Routines and types for creating and querying with bitmap index
-static constexpr size_t MAXBIN_PERCOL = 4, MAXCOLS = 5, MAXNINSTR = 6;
+static constexpr size_t MAXBIN_PERCOL = 4, MAXCOLS = 4, MAXNINSTR = 4;
 
 // Create a bitmap based on column values. Calls `bmpcreate`.
 // ALL ranges are left inclusive 
