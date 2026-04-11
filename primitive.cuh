@@ -136,13 +136,12 @@ size_t create_bin(const uint *__restrict__ fk, const void *__restrict__ attr,
 
 // Bitmap index of a column
 struct col {
+  // Bins inside the query range
+  uint* middle[MAXBIN_PERCOL] = {};
   // At most 2 bins may not entirely be included inside the query range,
   // potentially requiring candidate check depending on other columns.
-  uint* leftmost, *rightmost;
-  // Bins inside the query range
-  uint* middle[MAXBIN_PERCOL];
+  uint* leftmost = nullptr, *rightmost = nullptr;
 
-  col() noexcept { memset(this, 0, sizeof(col)); }
   // NOT AN AUTO FREE DTOR
   void release() noexcept {
     if (leftmost) cudaFree(leftmost);
@@ -174,7 +173,6 @@ struct vprg {
   // The first instruction is usually ORM to read a memory operand.
   instr instrs[MAXNINSTR];
 
-  vprg() noexcept { memset(this, 0, sizeof(vprg)); }
   void release() noexcept {
     for (size_t i = 0; i < MAXCOLS; ++i)
       col_bmps[i].release();

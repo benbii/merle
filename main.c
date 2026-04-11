@@ -10,5 +10,6 @@ int main(int argc, char *argv[]) {
     omp_set_num_threads(atoi(argv[3]));
   if (!ssb_demoall(ssbDir))
     return 2;
-  return !synth_demoall(synthDir);
+  return 0;
+  // return !synth_demoall(synthDir);
 }

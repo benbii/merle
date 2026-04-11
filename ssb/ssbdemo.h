@@ -90,13 +90,4 @@ bool ssb_demoall(const char *ssbDirname);
 
 #ifdef __cplusplus
 } /* extern "C" */
-
-// lambdas used across files
-/* struct s1op { // not slop I swear :D
-  uint16_t dateMin, datemax, *loOrderDate;
-  uint8_t discntMin, discntMax, *loDiscount;
-  uint8_t qtyMin, qtyMax, *loQuantity;
-  uint32_t *extendedPrice;
-}; */
-
 #endif

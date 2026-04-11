@@ -1,4 +1,4 @@
-#include "ssbdemo.h"
+#include "hardcoded_frontend.cuh"
 #include "../primitive_abla.cuh"
 using namespace mybmpidx;
 using namespace mybmpidx::abla;
@@ -62,19 +62,10 @@ static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
 void s1abl(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
            uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
            uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {
-  auto op = [=, dat = *dat] __device__ (uint i, bool chk) {
-    uint2 ret; ret.y = ELIMINATED;
-    // TODO: use __ldcs?
-    if (chk && (dat.loOrderDate[i] < dateMin || dat.loOrderDate[i] >= dateMax))
-      return ret;
-    const uint8_t discnt = dat.loDiscount[i];
-    if (chk && (discnt < discntMin || discnt >= discntMax))
-      return ret;
-    if (chk && (dat.loQuantity[i] < qtyMin || dat.loQuantity[i] >= qtyMax))
-      return ret;
-    ret.x = dat.loExtendedPrice[i] * discnt;
-    ret.y = 0;
-    return ret;
+  s1op op {
+      dateMin, dateMax, dat->loOrderDate,
+      discntMin, discntMax, dat->loDiscount,
+      qtyMin, qtyMax, dat->loQuantity, dat->loExtendedPrice,
   };
   recipe r = {.factsz = factsz, .nbit = {16, 8, 8},
               .min = {dateMin, discntMin, qtyMin},
@@ -92,21 +83,10 @@ void s1abl(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
 void s2abl(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
            uint16_t pMfgrMax, uint8_t sCityMin, uint8_t sCityMax,
            uint *grp_out, size_t nr_grp) {
-  auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
-    uint2 ret; ret.y = ELIMINATED;
-    // Filter by supplier city range
-    if (chk && (dat.loSuppCity[i] < sCityMin || dat.loSuppCity[i] >= sCityMax))
-      return ret;
-    // Join with part dimension to get manufacturer
-    uint32_t partKey = dat.loPartKey[i];
-    uint16_t mfgr = dat.partMfgr[partKey];  // Keys are zero-padded
-    // Filter by manufacturer range
-    if (chk && (mfgr < pMfgrMin || mfgr >= pMfgrMax))
-      return ret;
-    uint32_t year = ssbDateToYear(dat.loOrderDate[i]);
-    ret.y = (mfgr - pMfgrMin) + year * (pMfgrMax - pMfgrMin);
-    ret.x = dat.loRevenue[i];
-    return ret;
+  s2op op {
+      dat->loPartKey, pMfgrMin, pMfgrMax, dat->partMfgr,
+      sCityMin, sCityMax, dat->loSuppCity,
+      dat->loOrderDate, dat->loRevenue,
   };
   recipe r = {.factsz = factsz, .nbit = {16, 8},
               .min = {pMfgrMin, sCityMin},
@@ -122,39 +102,11 @@ void s2abl(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
 void s3abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
            uint16_t dateMin, uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
-  auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
-    uint2 ret; ret.y = ELIMINATED;
-    // Filter by supplier city range
-    uint8_t sCity = dat.loSuppCity[i];
-    if (chk && (sCity < sCityMin || sCity >= sCityMax))
-      return ret;
-    // Filter by date range
-    uint16_t date = dat.loOrderDate[i];
-    if (chk && (date < dateMin || date >= dateMax))
-      return ret;
-    // Join with customer dimension to get customer city
-    uint32_t custKey = dat.loCustKey[i];
-    uint8_t cCity = dat.custCity[custKey];
-    if (chk && (cCity < cCityMin || cCity >= cCityMax))
-      return ret;
-
-    // Apply downscaling if needed (for Q3.1)
-    uint8_t cCityMinScaled = cCityMin, cCityMaxScaled = cCityMax;
-    uint8_t sCityMinScaled = sCityMin, sCityMaxScaled = sCityMax;
-    if (cCityMax - cCityMin >= 50) {
-      cCity /= 10; cCityMinScaled /= 10; cCityMaxScaled /= 10;
-      sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;
-    }
-    const uint32_t year = ssbDateToYear(date);
-    const uint32_t yearMin = ssbDateToYear(dateMin);
-    const uint a = cCityMaxScaled - cCityMinScaled;
-    const uint b = sCityMaxScaled - sCityMinScaled;
-    ret.y = a * b * (year - yearMin) + a * (cCity - cCityMinScaled) +
-            (sCity - sCityMinScaled);
-    ret.x = dat.loRevenue[i];
-    return ret;
+  s3op op {
+    dat->loCustKey, cCityMin, cCityMax, dat->custCity,
+    sCityMin, sCityMax, dat->loSuppCity,
+    dateMin, dateMax, dat->loOrderDate, dat->loRevenue
   };
-
   recipe r = {.factsz = factsz, .nbit = {8, 8, 16},
               .min = {cCityMin, sCityMin, dateMin},
               .max = {cCityMax, sCityMax, dateMax},
@@ -169,47 +121,10 @@ void s4abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
            uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
            uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
-  auto op = [=, dat = *dat] __device__ (uint i, bool chk = false) {
-    uint2 ret; ret.y = ELIMINATED;
-    // Filter by supplier city range
-    uint8_t sCity = dat.loSuppCity[i];
-    if (chk && (sCity < sCityMin || sCity >= sCityMax))
-      return ret;
-    // Filter by date range
-    uint16_t date = dat.loOrderDate[i];
-    if (chk && (date < dateMin || date >= dateMax))
-      return ret;
-    // Join with customer dimension to get customer city
-    if (chk) {
-      uint32_t custKey = dat.loCustKey[i];
-      uint8_t cCity = dat.custCity[custKey];
-      if (cCity < cCityMin || cCity >= cCityMax)
-        return ret;
-    }
-    // Join with part dimension to get manufacturer
-    uint32_t partKey = dat.loPartKey[i];
-    uint16_t pMfgr = dat.partMfgr[partKey];
-    if (chk && (pMfgr < pMfgrMin || pMfgr >= pMfgrMax))
-      return ret;
-
-    // Apply downscaling based on ranges
-    uint8_t sCityMinScaled = sCityMin, sCityMaxScaled = sCityMax;
-    if (sCityMax - sCityMin >= 50) {
-      sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;
-    }
-    uint16_t pMfgrMinScaled = pMfgrMin, pMfgrMaxScaled = pMfgrMax;
-    if (pMfgrMax - pMfgrMin >= 200) {
-      pMfgr /= 40; pMfgrMinScaled /= 40; pMfgrMaxScaled /= 40;
-    }
-    const uint32_t year = ssbDateToYear(date);
-    const uint32_t yearMin = ssbDateToYear(dateMin);
-    const uint a = sCityMaxScaled - sCityMinScaled;
-    const uint b = pMfgrMaxScaled - pMfgrMinScaled;
-    ret.y = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) + (pMfgr - pMfgrMinScaled);
-    ret.x = dat.loRevenue[i] - dat.loSupplyCost[i];
-    return ret;
-  };
-
+  s4op op{dat->loCustKey, dat->loPartKey,   cCityMin,       cCityMax,
+          dat->custCity,  sCityMin,         sCityMax,       dat->loSuppCity,
+          pMfgrMin,       pMfgrMax,         dat->partMfgr,  dateMin,
+          dateMax,        dat->loOrderDate, dat->loRevenue, dat->loSupplyCost};
   recipe r = {.factsz = factsz, .nbit = {8, 8, 16, 16},
               .min = {cCityMin, sCityMin, pMfgrMin, dateMin},
               .max = {cCityMax, sCityMax, pMfgrMax, dateMax},
