@@ -83,7 +83,8 @@ enum {
 uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz);
-uint32_t *ssb_bmp_control_abl(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_bmp_control_abl_fuse(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_bmp_control_abl_nofuse(const struct ssb_schema *dat, size_t factSz);
 void ssb_wah(const struct ssb_schema *host, const struct ssb_schema *dat,
              size_t factSz);
 bool ssb_demoall(const char *ssbDirname);

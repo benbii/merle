@@ -1,12 +1,62 @@
 #pragma once
 #include "primitive.cuh"
 #include <cub/block/block_load.cuh>
-#include <cub/device/device_transform.cuh>
-#include <cub/device/device_select.cuh>
-#include <thrust/iterator/transform_iterator.h>
 
 namespace mybmpidx {
 namespace abla {
+
+// A "baseline" fused approach:
+// "virtual register" backed by local memory, closest to previous baselines by
+// Nelson et al but allowing runtime flexibility;
+// Method 1 only
+// No special instruction like ANDM or ORM aside from loading (ORM with 0); this
+// is not manifested here, but in call sites;
+// TODO: Eager or late look-back (incompatible with our framework)
+template <int nt, int vt, bool chk = false, typename op_t>
+__global__ void base_fuse(vprg data, uint *__restrict__ out, uint nr_grp,
+                          op_t op, uint idxbuf[/*(chk?6:3)*nwords*/]) {
+  static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
+  __shared__ uint cta_grp[1024]; // expand with dyn shmem lol
+  const uint base = blockIdx.x * (nt * vt);
+  idxbuf = idxbuf + base * (chk ? 6 : 3);
+  uint2 idxwords[vt];
+
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    const uint off = threadIdx.x + k * nt;
+    idxwords[k] = base + off < cuda::ceil_div(data.factsz, 32)
+                      ? (chk ? data.chk(base + off, &idxbuf[off * 6])
+                             : data.nochk(base + off, &idxbuf[off * 3]))
+                      : make_uint2(0, 0);
+  }
+  __syncthreads();
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    cta_grp[i] = 0;
+  __syncthreads();
+
+  #pragma unroll
+  for (uint k = 0; k < vt; ++k) {
+    while (idxwords[k].x != 0) { // diverges
+      // not coalesced due to `32*` in `off`
+      const uint bpos = __ffs(idxwords[k].x) - 1;
+      const uint pos = 32 * (base + threadIdx.x + k * nt) + bpos;
+      idxwords[k].x &= (idxwords[k].x - 1);
+      // for check, test the bpos-th bit in idxword.y
+      auto [val, grpidx] = op(pos, chk ? bool(idxwords[k].y & (1 << bpos)) : false);
+      if (grpidx >= nr_grp) continue;
+      unsigned peers = __match_any_sync(__activemask(), grpidx);
+      val = __reduce_add_sync(peers, val);
+      if ((__ffs(peers) - 1) == (threadIdx.x & 31))
+        atomicAdd(&cta_grp[grpidx], val);
+    }
+  }
+  __syncthreads();
+
+  // put value back into global memory
+  for (uint i = threadIdx.x; i < nr_grp; i += nt)
+    if (cta_grp[i] != 0)
+      atomicAdd(out + i, cta_grp[i]);
+}
 
 template <int nt, int vt, bool chk = false, typename op_t>
 __global__ void
@@ -16,8 +66,8 @@ method1(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
     uint idxbuf[(chk ? 6 : 3) * nt * vt];
     uint cta_grp[256]; // expand with dyn shmem lol
   } shared;
-
   uint2 idxwords[vt];
+
   const uint base = blockIdx.x * (nt * vt);
   #pragma unroll
   for (uint k = 0; k < vt; ++k) {
@@ -199,7 +249,7 @@ struct ands {
 
 template <int nt, int vt, int vt0, bool chk, typename op_t>
 __global__ void
-ands_grpby(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
+noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
   static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
   static_assert(vt0 < 32, "must have <32 vt");
   __shared__ union {

@@ -1,21 +1,11 @@
 #include "ssbdemo.h"
 #include "../primitive.cuh"
 using namespace mybmpidx;
-static constexpr auto nodim = recipe::nodim;
-static constexpr auto AND = vprg::AND, OR = vprg::OR, ANDM = vprg::ANDM,
-                      ORM = vprg::ORM, END = vprg::END;
 
-// vt0=8 is sufficient for SSB
-static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
-static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
-#ifdef LARGE_SMEM
-static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
-#else
-// Program + candchk is highly shmem intensive.
-// Go for a less aggressive `vt` choice.
-static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
-#endif
-
+// 6 supported columns whose min max boundary packed inside a 12-element array,
+// plus a "sparsity" parameter (0 sparse, 1 balanced, 2 dense)
+static vprg hardcoded_frontend(const ssb_bmp* bmpidx, const size_t bounds[13]) {
+}
 /* void s1fix(const ssb_schema *dat, const ssb_bmp *bmp, uint factsz,
            uint16_t dateMin, uint16_t dateMax, uint8_t discntMin,
            uint8_t discntMax, uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {

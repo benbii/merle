@@ -23,7 +23,8 @@ find_package(OpenMP REQUIRED)
 # Add executable
 add_executable(mydemo
     main.c bmpidx_create.cu
-    ssb/cpuref.c ssb/joindemo.cu ssb/controlled-demo.cu ssb/controlled-abla-demo.cu
+    ssb/cpuref.c ssb/joindemo.cu ssb/controlled-demo.cu
+    ssb/controlled-abla-nofuse.cu ssb/controlled-abla-fuse.cu
     ssb/bmpidx-create.cu ssb/wah-demo.cu
     synth/cpuref.c synth/synthdemo.cu synth/window_zipf.c synth/wah_roast.cu
     merle/wahGpuCmprs.cu merle/wahGpuDirect.cu

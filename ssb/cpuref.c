@@ -333,7 +333,20 @@ bool ssb_demoall(const char *ssbDirname) {
   ssb_bmpfree(bmp);
   free(bmp);
 
-  dev_res = ssb_bmp_control_abl(&dev_dat, factSz);
+  dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
+  fflush(stdout);
+  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
+             cudaMemcpyDeviceToHost);
+  for (size_t i = 0; i < SUMGRP_ALL; i++) {
+    if (host_res[i] != xfertmp[i]) {
+      fprintf(stderr, "BmpAbl mismatch at %zu: host=%u, dev=%u\n", i,
+              host_res[i], xfertmp[i]);
+      matches = false;
+    }
+  }
+  cudaFree(dev_res);
+
+  dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);
   fflush(stdout);
   cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
              cudaMemcpyDeviceToHost);
