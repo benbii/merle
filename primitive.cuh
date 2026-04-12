@@ -124,7 +124,7 @@ __global__ void bmpcreate(uint maxid, uint **out, Fetch fetch, Compar compar,
 static constexpr size_t MAXBIN_PERCOL = 4, MAXCOLS = 4, MAXNINSTR = 4;
 
 // Create a bitmap based on column values. Calls `bmpcreate`.
-// ALL ranges are left inclusive 
+// ALL ranges are left inclusive
 uint *create_select(const void *__restrict__ src, size_t nbit, uint factsz,
                     uint min, uint max);
 uint *create_join(const uint32_t *fk, const void *__restrict__ dimattr,
@@ -158,7 +158,7 @@ struct vprg {
 
   enum ops: uint8_t {
     END, // no more programs
-    AND, OR, // dest reg &= (|=) src reg
+    AND, OR, NOT, // dest reg &= (|=) src reg
     ANDM, ORM, // dest reg &= (|=) col_bmps[src]
   };
   // Assembly-like bitmap query "instruction". It loads and operates on 3
@@ -192,6 +192,7 @@ struct vprg {
       switch (instr_.opcode) {
       case vprg::AND: myshm[instr_.dstreg] &= myshm[instr_.src1]; break;
       case vprg::OR:  myshm[instr_.dstreg] |= myshm[instr_.src1]; break;
+      case vprg::NOT: myshm[instr_.dstreg] = ~myshm[instr_.src1]; break;
 
       case vprg::ANDM: {
         uint dst = myshm[instr_.dstreg], thecol = 0;
@@ -247,6 +248,12 @@ struct vprg {
         myshm[instr_.dstreg] = pprev | psrc;
         break;
       }
+      case vprg::NOT:
+        myshm[instr_.dstreg] = ~myshm[instr_.src1];
+        // No change on uncertain bits
+        if (instr_.dstreg != instr_.src1)
+          myshm[instr_.dstreg + 3] = myshm[instr_.src1 + 3];
+        break;
 
       case vprg::ANDM: {
         uint p_dst = myshm[instr_.dstreg];

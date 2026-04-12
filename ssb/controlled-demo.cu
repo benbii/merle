@@ -1,15 +1,11 @@
-#include "hardcoded_frontend.cuh"
-#include "../primitive_abla.cuh"
+#include "lambdas.cuh"
 using namespace mybmpidx;
-using namespace mybmpidx::abla;
 using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
-static constexpr auto AND = vprg::AND, OR = vprg::OR, ANDM = vprg::ANDM,
-                      ORM = vprg::ORM, END = vprg::END;
+static constexpr auto AND = vprg::AND, OR = vprg::OR, NOT = vprg::NOT,
+                      ANDM = vprg::ANDM, ORM = vprg::ORM, END = vprg::END;
 
-// lazy
-static uint *d_possi, *d_uncert, *d_onelist;
-
+// vt0=8 is sufficient for SSB
 static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
 #ifdef LARGE_SMEM
@@ -20,46 +16,31 @@ static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
 static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
 #endif
 
-#define PLEASE \
+#define DOWORK \
   cudaEvent_t start, stop; float msec; \
   cudaEventCreate(&start); cudaEventCreate(&stop);\
   for (size_t i = 0; i < 3; ++i) { \
     vprg p = i == 0 ? r.perfect(instrs) \
                     : (i == 1 ? r.many_or(instrs) : r.candchk(instrs)); \
-    ands a; memcpy(&a, &p, sizeof(ands)); \
     cudaEventRecord(start); \
     for (size_t d = 0; d < ndup; ++d) { \
-      if (i == 2) \
-        ands_grpby<nt, vt, vt0, true><<<ceil_div(factsz, nv32), nt>>>( \
-          a, grp_out, nr_grp, op); \
-      else \
-        ands_grpby<nt, vt, vt0, false><<<ceil_div(factsz, nv32), nt>>>( \
-          a, grp_out, nr_grp, op); \
+      if (i == 2) { \
+        cudaMemset(grp_out, 0, nr_grp * sizeof(uint)); \
+        vprg_grpby<nt, cp_vt, vt0, true><<<ceil_div(factsz, cp_nv32), nt>>>( \
+          p, grp_out, nr_grp, op); \
+      } else { \
+        vprg_grpby<nt, vt, vt0, false><<<ceil_div(factsz, nv32), nt>>>( \
+          p, grp_out, nr_grp, op); \
+      } \
     } \
-    cudaEventRecord(stop); cudaEventSynchronize(stop); \
+    cudaEventRecord(stop); \
+    cudaEventSynchronize(stop); \
     cudaEventElapsedTime(&msec, start, stop); \
     printf("\t%.4f", msec / ndup); \
     p.release(); \
-  } cudaEventDestroy(start); cudaEventDestroy(stop); \
-  for (size_t i = 0; i < 3; ++i) { \
-    vprg p = i == 0 ? r.perfect(instrs) \
-                    : (i == 1 ? r.many_or(instrs) : r.candchk(instrs)); \
-    float4 foo, bar = {0.0,0.0,0.0,0.0};\
-    for (size_t d = 0; d < ndup; ++d) { \
-      if (i == 2) \
-        foo = nofuse_abla<nt, cp_vt, vt, vt, true>( \
-          p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
-      else \
-        foo = nofuse_abla<nt, cp_vt, vt, vt, false>( \
-          p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
-      bar.x += foo.x; bar.y += foo.y; bar.z += foo.z; bar.w += foo.w; \
-    } \
-    bar.x /= ndup; bar.y /= ndup; bar.z /= ndup; bar.w /= ndup; \
-    printf("\t%.4f\t%.4f\t%.4f", bar.x, bar.y, bar.z); \
-    p.release(); \
-  }
+  } cudaEventDestroy(start); cudaEventDestroy(stop);
 
-void s1abl(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
+void s1bmp(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
            uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
            uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {
   s1op op {
@@ -75,12 +56,11 @@ void s1abl(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
               .attr = {dat->loOrderDate, dat->loDiscount, dat->loQuantity}};
   constexpr size_t nr_grp = 1;
   vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
-  PLEASE
-
+  DOWORK
 }
 
 // We need nr_groups for CUDA kernels
-void s2abl(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
+void s2bmp(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
            uint16_t pMfgrMax, uint8_t sCityMin, uint8_t sCityMax,
            uint *grp_out, size_t nr_grp) {
   s2op op {
@@ -96,10 +76,10 @@ void s2abl(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
               .fk = {dat->loPartKey, nullptr},
               .attr = {dat->partMfgr, dat->loSuppCity}};
   vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}};
-  PLEASE
+  DOWORK
 }
 
-void s3abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
+void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
            uint16_t dateMin, uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
   s3op op {
@@ -114,10 +94,10 @@ void s3abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .fk = {dat->loCustKey, nullptr, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->loOrderDate}};
   vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
-  PLEASE
+  DOWORK
 }
 
-void s4abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
+void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
            uint8_t cCityMax, uint8_t sCityMin, uint8_t sCityMax,
            uint16_t pMfgrMin, uint16_t pMfgrMax, uint16_t dateMin,
            uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
@@ -131,57 +111,52 @@ void s4abl(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .dimsz = {nodim, nodim, nodim, nodim},
               .fk = {dat->loCustKey, nullptr, dat->loPartKey, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->partMfgr, dat->loOrderDate}};
-  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}, {ANDM, 0, 3}};
+  vprg::instr instrs[MAXNINSTR] = {
+      {ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}, {ANDM, 0, 3}};
   if (dateMin <= SSBDATE_920101 && dateMax >= SSBDATE_990101)
-    r.attr[3] = nullptr, instrs[3].opcode = vprg::END;
-  PLEASE
+    r.attr[3] = nullptr, instrs[3].opcode = END;
+  DOWORK
 }
 
-uint32_t *ssb_bmp_control_abl(const struct ssb_schema *dat, size_t factSz) {
+uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz) {
   uint32_t *res;
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
-  cudaMalloc(&d_possi, ceil_div(factSz, 32) * sizeof(uint32_t));
-  cudaMalloc(&d_uncert, ceil_div(factSz, 32) * sizeof(uint32_t));
-  cudaMalloc(&d_onelist, ceil_div(factSz, 10) * sizeof(uint32_t));
 
-  printf("\nCase\tPftNprg\tOrsNprg\tChkNprg\tPftStg1\tPftStg2\tPftStg3"
-         "\tOrsStg1\tOrsStg2\tOrsStg3\tChkStg1\tChkStg2\tChkStg3\nSSB11");
-  s1abl(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res);
+  printf("\n\nCase\tPerfect\tManyOrs\tCandchk\nSSB11");
+  s1bmp(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res);
   printf("\nSSB12");
-  s1abl(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
+  s1bmp(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
   printf("\nSSB13");
-  s1abl(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2);
+  s1bmp(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2);
 
   printf("\nSSB21");
-  s2abl(dat, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21);
+  s2bmp(dat, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21);
   printf("\nSSB22");
-  s2abl(dat, factSz, 260, 268, 200, 250, res + SUMGRP_S1 + NGRP_S21, NGRP_S22);
+  s2bmp(dat, factSz, 260, 268, 200, 250, res + SUMGRP_S1 + NGRP_S21, NGRP_S22);
   printf("\nSSB23");
-  s2abl(dat, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22, NGRP_S23);
+  s2bmp(dat, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22, NGRP_S23);
 
   printf("\nSSB31");
-  s3abl(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
+  s3bmp(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2, NGRP_S31);
   printf("\nSSB32");
-  s3abl(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
+  s3bmp(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31, NGRP_S32);
   printf("\nSSB33");
-  s3abl(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
+  s3bmp(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31 + NGRP_S32, NGRP_S33);
   printf("\nSSB34");
-  s3abl(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
+  s3bmp(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
         res + SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33, NGRP_S34);
 
   printf("\nSSB41");
-  s4abl(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
+  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
         res + SUMGRP_S3, NGRP_S41);
   printf("\nSSB42");
-  s4abl(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
+  s4bmp(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
         res + SUMGRP_S3 + NGRP_S41, NGRP_S42);
   printf("\nSSB43");
-  s4abl(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101,
+  s4bmp(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101,
         res + SUMGRP_S3 + NGRP_S41 + NGRP_S42, NGRP_S43);
-
-  cudaFree(d_possi); cudaFree(d_uncert); cudaFree(d_onelist);
   return res;
 }

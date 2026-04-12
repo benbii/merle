@@ -153,7 +153,7 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
   total.print("Total_Sparse");
   // END OF SPARSE INDEX
 
-  total = {};
+  foo mid_total = total;
   // DENSE index built *on top of* sparse index
   // 1. Order Date: 1 month * (12*7), faked with only 3 bins
   uint64_t fakeDate[3] = {SSBDATE_940101, SSBDATE_940201, SSBDATE_971201};
@@ -169,14 +169,14 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
   result = _helper(nullptr, dat->loDiscount, 8, factSz, 0, bin, bin + 1, 11,
                    devOut->discntDense);
   result.print("loDiscount_Dense");
-  total += result;
+  total += result, mid_total += result;
 
   // 3. Quantity: 10 bins 12345, 678910, ...
   for (size_t i = 0; i <= 10; i++) bin[i] = i * 5 + 1;
   result = _helper(nullptr, dat->loQuantity, 8, factSz, 0, bin, bin + 1, 10,
                    devOut->qtyDense);
   result.print("loQuantity_Dense");
-  total += result;
+  total += result, mid_total += result;
 
   // Shared city bins for both supplier and customer
   for (size_t i = 0; i <= 25; i++) bin[i] = i * 10;
@@ -184,12 +184,12 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
   result = _helper(nullptr, dat->loSuppCity, 8, factSz, 0, bin, bin + 1, 25,
                    devOut->sCityDense);
   result.print("loSuppCity_Dense");
-  total += result;
+  total += result, mid_total += result;
   // 5. Customer City: 25 bins; one each SSB Nation (10 cities)
   result = _helper(dat->loCustKey, dat->custCity, 8, factSz, maxCustKey, bin,
                    bin + 1, 25, devOut->cCityDense);
   result.print("custCity_Dense");
-  total += result;
+  total += result, mid_total += result;
 
   // 6. Part Manufacturer: 25 bins; one each SSB category (40 brands).
   // HACKY: only category 2 (40~80) gets used in query
@@ -199,6 +199,7 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
   result *= 25; // actual time shourter since 1 coulmn read generates multi bins
   result.print("partMfgr_Dense");
   total += result;
+  mid_total.print("Total_Balanced");
   total.print("Total_Dense");
   // END OF DENSE INDEX
 

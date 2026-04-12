@@ -1,7 +1,7 @@
 #include "ssbdemo.h"
 #include "../primitive.cuh"
-using namespace mybmpidx;
 
+namespace mybmpidx {
 // lambdas used across files
 struct s1op { // not slop I swear :D
   uint16_t dateMin, dateMax, *loOrderDate;
@@ -132,8 +132,10 @@ struct s4op {
     const uint32_t yearMin = ssbDateToYear(dateMin);
     const uint a = sCityMaxScaled - sCityMinScaled;
     const uint b = pMfgrMaxScaled - pMfgrMinScaled;
-    ret.y = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) + (pMfgr - pMfgrMinScaled);
+    ret.y = a * b * (year - yearMin) + a * (sCity - sCityMinScaled) +
+            (pMfgr - pMfgrMinScaled);
     ret.x = loRevenue[i] - loSupplyCost[i];
     return ret;
   };
 };
+}

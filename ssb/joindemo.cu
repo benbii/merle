@@ -1,4 +1,4 @@
-#include "hardcoded_frontend.cuh"
+#include "lambdas.cuh"
 using namespace mybmpidx;
 using cuda::ceil_div;
 
