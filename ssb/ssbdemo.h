@@ -1,3 +1,4 @@
+#pragma once
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -13,6 +14,7 @@ enum {
   SSBDATE_940201 = 762,
   SSBDATE_940204 = 765,
   SSBDATE_940211 = 772,
+  SSBDATE_940301 = 790,
   SSBDATE_940501 = 851,
   SSBDATE_940901 = 974,
   SSBDATE_950101 = 1096,
@@ -54,17 +56,21 @@ struct ssb_bmp {
   // query into say SF=10, 60M-row parts. Prefetch the next part while
   // processing the previous, thereby hiding all HToD latencies.
   // However that's such a hassle for this prototype. Create useful bins only!
-  uint32_t *dateSparse[7], *dateDense[3];
+  uint32_t *dateSparse[7], *dateDense[4];
   uint32_t *discntSparse[4], *discntDense[11];
   uint32_t *qtySparse[5], *qtyDense[10];
   // Hacky like Date column
-  uint32_t *pMfgrSparse[5], *pMfgrDense[1];
-  uint32_t *sCitySparse[5], *sCityDense[25];
-  uint32_t *cCitySparse[5], *cCityDense[25];
+  uint32_t *mfgrSparse[5], *mfgrDense[5];
+  uint32_t *sCitySparse[5], *sCityDense[3];
+  uint32_t *cCitySparse[5], *cCityDense[3];
 };
 void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
                    size_t factSz, struct ssb_bmp *devOut);
 void ssb_bmpfree(struct ssb_bmp *devOut);
+
+extern const uint64_t dateSpBin[8], dateDeBin[5], discntSpBin[5],
+    discntDeBin[12], qtySpBin[6], qtyDeBin[11], mfgrSpBin[6],
+    mfgrDeBin[6], sCitySpBin[6], sCityDeBin[4];
 
 // Q1.{1,2,3} - 1 group each
 // Q2.1 7*40=280, Q2.2 7*8=56, Q2.3 7*1=7
@@ -82,6 +88,8 @@ enum {
 
 uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz);
+uint32_t *ssb_bmp_fixed(const struct ssb_schema *dat, struct ssb_bmp *bmp,
+                        size_t factSz);
 uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_bmp_control_abl_fuse(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_bmp_control_abl_nofuse(const struct ssb_schema *dat, size_t factSz);

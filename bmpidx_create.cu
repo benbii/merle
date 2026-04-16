@@ -1,8 +1,5 @@
 #include "primitive.cuh"
-// make clangd happy
-#ifdef __CLANG__CUDA_MATH_FORWARD_DECLARES_H__
-#define __ldcs(x) *(x)
-#endif
+#include <cassert>
 
 static void* __cum(size_t sz) {
   void *bruh;
@@ -12,7 +9,6 @@ static void* __cum(size_t sz) {
 }
 
 namespace mybmpidx {
-
 // ONLY cudaFree out[0]!!!
 // `out` is a host array of pointers to device addresses
 size_t create_bin(const uint *__restrict__ fk, const void *__restrict__ attr,
@@ -139,6 +135,96 @@ uint *create_join(const uint32_t *__restrict__ foreignkey,
   return out;
 }
 
+col col::from_bin(size_t nbin, uint** bins, const size_t *bounds, size_t min, size_t max) {
+  col res;
+  if (nbin == 0 || min >= max || *bounds > min || bounds[nbin] < max)
+    return res;
+  while (bounds[1] <= min) // bins[0] is the leftmost bin
+    --nbin, ++bins, ++bounds;
+  while (bounds[nbin - 1] >= max) // bins[nbin-1] is the rightmost bin
+    --nbin;
+  assert(nbin > 0);
+
+  if (nbin == 1) {
+    res.middle[0] = bounds[0] == min && bounds[1] == max ? bins[0] : nullptr;
+    res.leftmost = bounds[0] == min && bounds[1] == max ? nullptr : bins[0];
+    return res;
+  }
+
+  if (bounds[0] != min) {
+    res.leftmost = bins[0];
+    ++bounds, ++bins, --nbin;
+  }
+  if (bounds[nbin] != max)
+    res.rightmost = bins[--nbin];
+  // the rest are middle bins, assuming count < MAXBIN_PERCOL
+  memcpy(res.middle, bins, nbin * sizeof(intptr_t));
+  return res;
+}
+
+col col::from_bin2(size_t nbin, uint *bins[], const size_t bounds[],
+                   size_t nf, uint *fine_bins[], const size_t fbounds[],
+                   size_t min, size_t max) {
+  // Nah for SSB go for secondary when primary requires candidate checking
+  // happens to yield optimal plan on all cases.
+  col res = from_bin(nbin, bins, bounds, min, max);
+  if (res.leftmost || res.rightmost)
+    return from_bin(nf, fine_bins, fbounds, min, max);
+  return res;
+  // Full code:
+
+  /* col res;
+  if (nbin == 0 || min >= max || *bounds > min || bounds[nbin] < max)
+    return res;
+  while (bounds[1] <= min) // bins[0] is the leftmost bin
+    --nbin, ++bins, ++bounds;
+  while (bounds[nbin - 1] >= max) // bins[nbin-1] is the rightmost bin
+    --nbin;
+  assert(nbin > 0);
+  if (nbin == 1) {
+    if (bounds[0] != min || bounds[1] != max) {
+      res = from_bin(nf, fine_bins, fbounds, min, max);
+      if (res.leftmost || res.middle[0]) // succeeded
+        return res;
+    }
+    res.middle[0] = bins[0];
+    return res;
+  }
+
+  uint **middle = res.middle, **smid;
+  while (*middle)
+    ++middle;
+  col scratch = from_bin(nf, fine_bins, fbounds, min, bounds[1]);
+  if (scratch.rightmost == nullptr) {
+    res.leftmost = scratch.leftmost;
+    smid = scratch.middle;
+    while (*smid)
+      *middle++ = *smid++;
+    min = bounds[1];
+  }
+  scratch = from_bin(nf, fine_bins, fbounds, bounds[nbin - 1], max);
+  if (scratch.leftmost == nullptr) {
+    res.rightmost = scratch.rightmost;
+    smid = scratch.middle;
+    while (*smid)
+      *middle++ = *smid++;
+    max = bounds[nbin - 1];
+  }
+  scratch = from_bin(nbin, bins, bounds, min, max);
+  smid = scratch.middle;
+  while (*smid)
+    *middle++ = *smid++;
+  if (scratch.leftmost) {
+    assert(res.leftmost == nullptr);
+    res.leftmost = scratch.leftmost;
+  }
+  if (scratch.rightmost) {
+    assert(res.rightmost == nullptr);
+    res.rightmost = scratch.rightmost;
+  }
+  return res; */
+}
+
 vprg recipe::perfect(const vprg::instr *instrs) const {
   vprg ret;
   ret.factsz = factsz;
@@ -146,7 +232,7 @@ vprg recipe::perfect(const vprg::instr *instrs) const {
   ret.factsz = factsz;
   for (size_t i = 0; i < MAXCOLS; ++i) {
     if (attr[i] == NULL) continue;
-    ret.col_bmps[i].middle[0] =
+    ret.cols[i].middle[0] =
         create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
   }
   return ret;
@@ -159,7 +245,7 @@ vprg recipe::many_or(const vprg::instr *instrs) const {
   ret.factsz = factsz;
   for (size_t i = 0; i < MAXCOLS; ++i) {
     if (attr[i] == NULL) continue;
-    uint step = (max[i] - min[i]) / 3, **middle = ret.col_bmps[i].middle;
+    uint step = (max[i] - min[i]) / 3, **middle = ret.cols[i].middle;
     if (step == 0) {
       middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
       continue;
@@ -181,13 +267,13 @@ vprg recipe::candchk(const vprg::instr *instrs) const {
   memcpy(ret.instrs, instrs, sizeof(vprg::instr) * MAXNINSTR);
   // column 0 - left bin left range -= step / 2
   if (attr[0] == nullptr) return ret;
-  uint step = (max[0] - min[0]) / 3, **middle = ret.col_bmps[0].middle;
+  uint step = (max[0] - min[0]) / 3, **middle = ret.cols[0].middle;
   if (step == 0)
-    ret.col_bmps[0].leftmost = create_join(fk[0], attr[0], nbit[0], factsz,
+    ret.cols[0].leftmost = create_join(fk[0], attr[0], nbit[0], factsz,
                                            dimsz[0], min[0], max[0] + 1);
   else {
     auto l = std::max(min[0], step / 2) - step / 2;
-    ret.col_bmps[0].leftmost =
+    ret.cols[0].leftmost =
       create_join(fk[0], attr[0], nbit[0], factsz, dimsz[0], l, min[0] + step);
     middle[0] = create_join(fk[0], attr[0], nbit[0], factsz, dimsz[0],
                             min[0] + step, min[0] + 2 * step);
@@ -197,12 +283,12 @@ vprg recipe::candchk(const vprg::instr *instrs) const {
 
   // column 1 - right bin right range += step / 2
   if (attr[1] == nullptr) return ret;
-  step = (max[1] - min[1]) / 3, middle = ret.col_bmps[1].middle;
+  step = (max[1] - min[1]) / 3, middle = ret.cols[1].middle;
   if (step == 0)
-    ret.col_bmps[1].rightmost = create_join(fk[1], attr[1], nbit[1], factsz,
+    ret.cols[1].rightmost = create_join(fk[1], attr[1], nbit[1], factsz,
                                             dimsz[1], min[1] - 1, max[1]);
   else {
-    ret.col_bmps[1].rightmost =
+    ret.cols[1].rightmost =
       create_join(fk[1], attr[1], nbit[1], factsz, dimsz[1], min[1] + 2 * step,
                   max[1] + step / 2);
     middle[0] = create_join(fk[1], attr[1], nbit[1], factsz, dimsz[1],
@@ -214,7 +300,7 @@ vprg recipe::candchk(const vprg::instr *instrs) const {
   // rest columns same as many or
   for (size_t i = 2; i < MAXCOLS; ++i) {
     if (attr[i] == NULL) return ret;
-    uint step = (max[i] - min[i]) / 3, **middle = ret.col_bmps[i].middle;
+    uint step = (max[i] - min[i]) / 3, **middle = ret.cols[i].middle;
     if (step == 0) {
       middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
       continue;
@@ -228,5 +314,4 @@ vprg recipe::candchk(const vprg::instr *instrs) const {
   }
   return ret;
 }
-
 } // namespace mybmpidx

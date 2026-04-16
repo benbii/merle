@@ -168,7 +168,7 @@ uint32_t *ssb_bmp_control_abl_fuse(const struct ssb_schema *dat, size_t factSz) 
   // printf("\nCase\tPftNprg\tOrsNprg\tChkNprg\tPftStg1\tPftStg2\tPftStg3"
   //        "\tOrsStg1\tOrsStg2\tOrsStg3\tChkStg1\tChkStg2\tChkStg3\nSSB11");
   printf("\nCase\tPftNprg\tOrsNprg\tChkNprg\tPftBfus\tOrsBfus\tChkBfus\nSSB11");
-  s1fus(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res);
+  s1fus(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res);
   printf("\nSSB12");
   s1fus(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
   printf("\nSSB13");

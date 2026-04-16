@@ -6,6 +6,30 @@
 #include <cuda_runtime_api.h>
 using namespace mybmpidx;
 
+const uint64_t dateSpBin[8] = {
+  SSBDATE_920101, SSBDATE_930101, SSBDATE_940101, SSBDATE_950101,
+  SSBDATE_960101, SSBDATE_970101, SSBDATE_980101, SSBDATE_990101,
+}, dateDeBin[5] = {
+  SSBDATE_940101, SSBDATE_940201, SSBDATE_940301,
+  SSBDATE_971201, SSBDATE_980101
+}, discntSpBin[5] = {
+  0, 2, 5, 8, 11
+}, discntDeBin[12] = {
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+}, qtySpBin[6] = {
+  1, 11, 21, 31, 41, 51
+}, qtyDeBin[11] = {
+  1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51
+}, mfgrSpBin[6] = {
+  0, 200, 400, 600, 800, 1000
+}, mfgrDeBin[6] = {
+  40, 80, 120, 160, 240, 280
+}, sCitySpBin[6] = {
+  0, 50, 100, 150, 200, 250
+}, sCityDeBin[4] = {
+  50, 60, 190, 200
+};
+
 // returns fused bmp creation time and WAH bmp idx creation time
 struct foo {
   float bmp_msec, wah_msec;
@@ -31,8 +55,8 @@ struct foo {
 };
 
 static foo _helper(const uint *__restrict fk, const void *__restrict attr,
-                   size_t nbit, uint factSz, uint dimsz, const uint64_t *mins,
-                   const uint64_t *maxes, size_t ncol, uint **devColOut) {
+                   size_t nbit, uint factSz, uint dimsz, const uint64_t *bin,
+                   size_t ncol, uint **devColOut) {
   foo bar = {0.0, 0.0, 0, 0};
   cudaEvent_t start, stop;
   cudaEventCreate(&start); cudaEventCreate(&stop);
@@ -40,7 +64,7 @@ static foo _helper(const uint *__restrict fk, const void *__restrict attr,
   // Time fused bitmap creation
   cudaEventRecord(start);
   size_t single_bmp_sz =
-      create_bin(fk, attr, nbit, factSz, dimsz, mins, maxes, ncol, devColOut);
+      create_bin(fk, attr, nbit, factSz, dimsz, bin, bin + 1, ncol, devColOut);
   cudaEventRecord(stop); cudaEventSynchronize(stop);
   cudaEventElapsedTime(&bar.bmp_msec, start, stop);
   bar.bmp_sz = ncol * single_bmp_sz;
@@ -75,11 +99,11 @@ static foo _helper(const uint *__restrict fk, const void *__restrict attr,
     if (fk == nullptr) {
       // Direct attribute filter
       bitmap31 = dbjoinFlatWah(attr_u32, factSz, nullptr, nullptr,
-                               (uint32_t)mins[i], (uint32_t)maxes[i], ctx);
+                               (uint32_t)bin[i], (uint32_t)bin[i + 1], ctx);
     } else {
       // Join filter
       bitmap31 = dbjoinFlatWah(fk, factSz, attr_u32, nullptr,
-                               (uint32_t)mins[i], (uint32_t)maxes[i], ctx);
+                               (uint32_t)bin[i], (uint32_t)bin[i + 1], ctx);
     }
     mgpu::mem_t<int> wah = wahCompress((const int*)bitmap31.data(), bitmap31.size(), ctx);
     total_wah_sz += wah.size() * sizeof(int);
@@ -108,46 +132,38 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
 
   // SPARSE COLUMNS
   // 1. Order Date: 1 year * 7
-  uint64_t bin[85];
-  bin[0] = SSBDATE_920101, bin[1] = SSBDATE_930101, bin[2] = SSBDATE_940101,
-  bin[3] = SSBDATE_950101, bin[4] = SSBDATE_960101, bin[5] = SSBDATE_970101,
-  bin[6] = SSBDATE_980101, bin[7] = SSBDATE_990101;
-  foo result = _helper(nullptr, dat->loOrderDate, 16, factSz, 0, bin, bin + 1,
+  foo result = _helper(nullptr, dat->loOrderDate, 16, factSz, 0, dateSpBin,
                        7, devOut->dateSparse);
   result.print("loOrderDate_Sparse");
   total += result;
 
   // 2. Discount: 4 bins 01, 234, 567, 8910
-  bin[0] = 0, bin[1] = 2, bin[2] = 5, bin[3] = 8, bin[4] = 11;
-  result = _helper(nullptr, dat->loDiscount, 8, factSz, 0, bin, bin + 1, 4,
+  result = _helper(nullptr, dat->loDiscount, 8, factSz, 0, discntSpBin, 4,
                    devOut->discntSparse);
   result.print("loDiscount_Sparse");
   total += result;
 
   // 3. Quantity: 5 bins 12345678910, 1112.....50
-  for (size_t i = 0; i <= 5; i++) bin[i] = i * 10 + 1;
-  result = _helper(nullptr, dat->loQuantity, 8, factSz, 0, bin, bin + 1, 5,
+  result = _helper(nullptr, dat->loQuantity, 8, factSz, 0, qtySpBin, 5,
                    devOut->qtySparse);
   result.print("loQuantity_Sparse");
   total += result;
 
   // Shared city bins for both supplier and customer
-  for (size_t i = 0; i <= 5; i++) bin[i] = i * 50;
   // 4. Supplier City: 5 bins; one each SSB region.
-  result = _helper(nullptr, dat->loSuppCity, 8, factSz, 0, bin, bin + 1, 5,
+  result = _helper(nullptr, dat->loSuppCity, 8, factSz, 0, sCitySpBin, 5,
                    devOut->sCitySparse);
   result.print("loSuppCity_Sparse");
   total += result;
   // 5. Customer City: 5 bins; one each SSB region.
-  result = _helper(dat->loCustKey, dat->custCity, 8, factSz, maxCustKey, bin,
-                   bin + 1, 5, devOut->cCitySparse);
+  result = _helper(dat->loCustKey, dat->custCity, 8, factSz, maxCustKey,
+                   sCitySpBin, 5, devOut->cCitySparse);
   result.print("custCity_Sparse");
   total += result;
 
   // 6. Part Manufacturer: 5 bins; one each SSB Category
-  for (size_t i = 0; i <= 5; i++) bin[i] = i * 200;
-  result = _helper(dat->loPartKey, dat->partMfgr, 16, factSz, maxPartKey, bin,
-                   bin + 1, 5, devOut->pMfgrSparse);
+  result = _helper(dat->loPartKey, dat->partMfgr, 16, factSz, maxPartKey,
+                   mfgrSpBin, 5, devOut->mfgrSparse);
   result.print("partMfgr_Sparse");
   total += result;
   total.print("Total_Sparse");
@@ -156,47 +172,44 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
   foo mid_total = total;
   // DENSE index built *on top of* sparse index
   // 1. Order Date: 1 month * (12*7), faked with only 3 bins
-  uint64_t fakeDate[3] = {SSBDATE_940101, SSBDATE_940201, SSBDATE_971201};
-  bin[0] = fakeDate[0] + 31, bin[1] = fakeDate[1] + 28, bin[2] = fakeDate[2] + 31;
-  result = _helper(nullptr, dat->loOrderDate, 16, factSz, 0, fakeDate, bin, 3,
+  result = _helper(nullptr, dat->loOrderDate, 16, factSz, 0, dateDeBin, 4,
                    devOut->dateDense);
-  result *= 28;
+  result *= 21; // actual time shourter since 1 coulmn read generates multi bins
   result.print("loOrderDate_Dense");
   total += result;
 
   // 2. Discount: 11 bins 0,1,2,3,4,5,6,7,8,9,10
-  for (size_t i = 0; i <= 11; ++i) bin[i] = i + 1;
-  result = _helper(nullptr, dat->loDiscount, 8, factSz, 0, bin, bin + 1, 11,
+  result = _helper(nullptr, dat->loDiscount, 8, factSz, 0, discntDeBin, 11,
                    devOut->discntDense);
   result.print("loDiscount_Dense");
   total += result, mid_total += result;
 
   // 3. Quantity: 10 bins 12345, 678910, ...
-  for (size_t i = 0; i <= 10; i++) bin[i] = i * 5 + 1;
-  result = _helper(nullptr, dat->loQuantity, 8, factSz, 0, bin, bin + 1, 10,
+  result = _helper(nullptr, dat->loQuantity, 8, factSz, 0, qtyDeBin, 10,
                    devOut->qtyDense);
   result.print("loQuantity_Dense");
   total += result, mid_total += result;
 
   // Shared city bins for both supplier and customer
-  for (size_t i = 0; i <= 25; i++) bin[i] = i * 10;
+  // HACKY: only 2 countries (50~60~190~200) present in query
   // 4. Supplier City: 25 bins; one each SSB Nation (10 cities)
-  result = _helper(nullptr, dat->loSuppCity, 8, factSz, 0, bin, bin + 1, 25,
+  result = _helper(nullptr, dat->loSuppCity, 8, factSz, 0, sCityDeBin, 3,
                    devOut->sCityDense);
+  result *= (25.0 / 3.0);
   result.print("loSuppCity_Dense");
-  total += result, mid_total += result;
+  total += result;
   // 5. Customer City: 25 bins; one each SSB Nation (10 cities)
-  result = _helper(dat->loCustKey, dat->custCity, 8, factSz, maxCustKey, bin,
-                   bin + 1, 25, devOut->cCityDense);
+  result = _helper(dat->loCustKey, dat->custCity, 8, factSz, maxCustKey,
+                   sCityDeBin, 3, devOut->cCityDense);
+  result *= (25.0 / 3.0);
   result.print("custCity_Dense");
   total += result, mid_total += result;
 
   // 6. Part Manufacturer: 25 bins; one each SSB category (40 brands).
-  // HACKY: only category 2 (40~80) gets used in query
-  bin[0] = 40, bin[1] = 80;
-  result = _helper(dat->loPartKey, dat->partMfgr, 16, factSz, maxPartKey, bin,
-                   bin + 1, 1, devOut->pMfgrDense);
-  result *= 25; // actual time shourter since 1 coulmn read generates multi bins
+  // HACKY: only category 1,3,6 (40~80~120~160~240~280) gets used in query
+  result = _helper(dat->loPartKey, dat->partMfgr, 16, factSz, maxPartKey,
+                   mfgrDeBin, 5, devOut->mfgrDense);
+  result *= 5.0;
   result.print("partMfgr_Dense");
   total += result;
   mid_total.print("Total_Balanced");
@@ -209,7 +222,7 @@ void ssb_bmpcreate(const struct ssb_schema *host, const struct ssb_schema *dat,
 }
 
 void ssb_bmpfree(struct ssb_bmp *devOut) {
-  cudaFree(devOut->pMfgrSparse[0]); cudaFree(devOut->pMfgrDense[0]);
+  cudaFree(devOut->mfgrSparse[0]); cudaFree(devOut->mfgrDense[0]);
   cudaFree(devOut->sCitySparse[0]); cudaFree(devOut->sCityDense[0]);
   cudaFree(devOut->cCitySparse[0]); cudaFree(devOut->cCityDense[0]);
   cudaFree(devOut->dateSparse[0]); cudaFree(devOut->dateDense[0]);

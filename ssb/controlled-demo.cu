@@ -123,7 +123,7 @@ uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz) {
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
 
   printf("\n\nCase\tPerfect\tManyOrs\tCandchk\nSSB11");
-  s1bmp(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25, res);
+  s1bmp(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res);
   printf("\nSSB12");
   s1bmp(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
   printf("\nSSB13");

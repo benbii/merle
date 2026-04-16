@@ -11,11 +11,11 @@ def generate_zipf_samples(n_samples, s):
 
 def get_bit_width(maxval):
     """Determine appropriate bit width based on maxval"""
-    if maxval <= 256:
+    if maxval <= 255:
         return 8
-    elif maxval <= 65536:
+    elif maxval <= 65535:
         return 16
-    elif maxval <= 4294967296:
+    elif maxval <= 4294967295:
         return 32
     else:
         return 64

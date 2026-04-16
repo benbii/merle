@@ -1,3 +1,4 @@
+#pragma once
 #include "ssbdemo.h"
 #include "../primitive.cuh"
 
@@ -8,7 +9,7 @@ struct s1op { // not slop I swear :D
   uint8_t discntMin, discntMax, *loDiscount;
   uint8_t qtyMin, qtyMax, *loQuantity;
   uint32_t *extendedPrice;
-  uint2 __device__ operator()(uint i, bool chk = true) {
+  uint2 __device__ operator()(uint i, bool chk = true) const {
     uint2 ret; ret.y = ELIMINATED;
     // TODO: use __ldcs?
     if (chk && (loOrderDate[i] < dateMin || loOrderDate[i] >= dateMax))
@@ -30,7 +31,7 @@ struct s2op {
   uint8_t sCityMin, sCityMax, *loSuppCity;
   uint16_t *loOrderDate;
   uint32_t *loRevenue;
-  uint2 __device__ operator()(uint i, bool chk = true) {
+  uint2 __device__ operator()(uint i, bool chk = true) const {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range
     if (chk && (loSuppCity[i] < sCityMin || loSuppCity[i] >= sCityMax))
@@ -54,7 +55,7 @@ struct s3op {
   uint8_t sCityMin, sCityMax, *loSuppCity;
   uint16_t dateMin, dateMax, *loOrderDate;
   uint32_t *loRevenue;
-  uint2 __device__ operator()(uint i, bool chk = true) {
+  uint2 __device__ operator()(uint i, bool chk = true) const {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range
     uint8_t sCity = loSuppCity[i];
@@ -96,7 +97,7 @@ struct s4op {
   uint16_t dateMin, dateMax, *loOrderDate;
   uint32_t *loRevenue, *loSupplyCost;
 
-  uint2 __device__ operator()(uint i, bool chk = true) {
+  uint2 __device__ operator()(uint i, bool chk = true) const {
     uint2 ret; ret.y = ELIMINATED;
     // Filter by supplier city range
     uint8_t sCity = loSuppCity[i];
@@ -119,7 +120,6 @@ struct s4op {
     if (chk && (pMfgr < pMfgrMin || pMfgr >= pMfgrMax))
       return ret;
 
-    // Apply downscaling based on ranges
     uint8_t sCityMinScaled = sCityMin, sCityMaxScaled = sCityMax;
     if (sCityMax - sCityMin >= 50) {
       sCity /= 10; sCityMinScaled /= 10; sCityMaxScaled /= 10;

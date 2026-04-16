@@ -2,9 +2,6 @@
 #include <cub/block/block_reduce.cuh>
 #include <cub/block/block_scan.cuh>
 #include <cuda/std/array>
-#ifdef __CLANG__CUDA_MATH_FORWARD_DECLARES_H__
-#define __ldcs(x) *(x)
-#endif
 
 namespace mybmpidx {
 static constexpr uint ELIMINATED = 0x44f8a1ef;
@@ -149,11 +146,24 @@ struct col {
     for (size_t i = 0; i < MAXBIN_PERCOL; ++i)
       if (middle[i]) cudaFree(middle[i]);
   }
+  bool is_nochk() const noexcept {
+    return leftmost == nullptr && rightmost == nullptr;
+  }
+
+  // Construct a bitmap column using given range, including min but not
+  // max. The column is empty on failure.
+  // NOTE: overflow when middle bins >= MAXBIN_PERCOL ignored
+  static col from_bin(size_t n, uint *bins[/*n*/], const size_t bounds[/*n+1*/],
+                      size_t min, size_t max);
+  // unused in current demo
+  static col from_bin2(size_t nc, uint *coarse_bins[], const size_t cbounds[],
+                       size_t nf, uint *fine_bins[], const size_t fbounds[],
+                       size_t min, size_t max);
 };
 
 // Virtual bmp query program
 struct vprg {
-  col col_bmps[MAXCOLS];
+  col cols[MAXCOLS];
   uint factsz;
 
   enum ops: uint8_t {
@@ -175,7 +185,13 @@ struct vprg {
 
   void release() noexcept {
     for (size_t i = 0; i < MAXCOLS; ++i)
-      col_bmps[i].release();
+      cols[i].release();
+  }
+  bool is_nochk() const noexcept {
+    for (size_t i = 0; i < MAXCOLS; ++i)
+      if (!cols[i].is_nochk())
+        return false;
+    return true;
   }
   static constexpr uint shmsz(uint vt, uint nt, uint nr_grp, bool chk) {
     return std::max((chk ? 6 : 3) * vt * nt, nr_grp) * sizeof(uint);
@@ -197,7 +213,7 @@ struct vprg {
       case vprg::ANDM: {
         uint dst = myshm[instr_.dstreg], thecol = 0;
         if (dst == 0) break; // 0 words are fairly common
-        const col &memop = col_bmps[instr_.src1];
+        const col &memop = cols[instr_.src1];
         #pragma unroll
         for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
           thecol |= __ldcs(&memop.middle[k][wordpos]); // full 1 words are nonexistent
@@ -207,7 +223,7 @@ struct vprg {
 
       case vprg::ORM: {
         uint dst = myshm[instr_.dstreg];
-        const col &memop = col_bmps[instr_.src1];
+        const col &memop = cols[instr_.src1];
         #pragma unroll
         for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
           dst |= __ldcs(&memop.middle[k][wordpos]);
@@ -258,7 +274,7 @@ struct vprg {
       case vprg::ANDM: {
         uint p_dst = myshm[instr_.dstreg];
         if (p_dst == 0) break; // nothing is possible
-        const col &memop = this->col_bmps[instr_.src1];
+        const col &memop = this->cols[instr_.src1];
         uint c_src = 0,
              u_src = (memop.leftmost ? __ldcs(&memop.leftmost[wordpos]) : 0) |
                      (memop.rightmost ? __ldcs(&memop.rightmost[wordpos]) : 0);
@@ -277,7 +293,7 @@ struct vprg {
       }
 
       case vprg::ORM: {
-        const col &memop = this->col_bmps[instr_.src1];
+        const col &memop = this->cols[instr_.src1];
         uint c_src = 0,
              u_src = (memop.leftmost ? __ldcs(&memop.leftmost[wordpos]) : 0) |
                      (memop.rightmost ? __ldcs(&memop.rightmost[wordpos]) : 0);

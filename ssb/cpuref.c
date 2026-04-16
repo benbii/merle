@@ -62,7 +62,6 @@ size_t ssb_load(struct ssb_schema *host, struct ssb_schema *dev,
   size_t custCity_sz = __ldssb((void **)&host->custCity, "custCity", ssbDirname, 0);
   size_t custsz = custCity_sz / sizeof(uint8_t);  // Number of customers
   __ldssb((void **)&host->custMktSegment, "custMktSegment", ssbDirname, custsz * sizeof(uint8_t));
-  
   size_t partName_sz = __ldssb((void **)&host->partName, "partName", ssbDirname, 0);
   size_t partsz = partName_sz / sizeof(uint16_t);  // Number of parts
   __ldssb((void **)&host->partMfgr, "partMfgr", ssbDirname, partsz * sizeof(uint16_t));
@@ -266,8 +265,7 @@ uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz) {
       s2ref(dat, factSz, 260, 268, 200, 250, res + SUMGRP_S1 + NGRP_S21);
       break;
     case 5:
-      s2ref(dat, factSz, 260, 261, 50, 100,
-            res + SUMGRP_S1 + NGRP_S21 + NGRP_S22);
+      s2ref(dat, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22);
       break;
 
     case 6:
@@ -309,12 +307,25 @@ bool ssb_demoall(const char *ssbDirname) {
 
   // Run the index creation and WAH baseline demo first
   ssb_wah(&host_dat, &dev_dat, factSz);
-  struct ssb_bmp *bmp = malloc(sizeof(struct ssb_bmp));
-  ssb_bmpcreate(&host_dat, &dev_dat, factSz, bmp);
-
   uint32_t *host_res = ssb_cpujoin(&host_dat, factSz), *dev_res;
   uint32_t *xfertmp = malloc(SUMGRP_ALL * sizeof(uint32_t));
   bool matches = true;
+
+  struct ssb_bmp bmp;
+  ssb_bmpcreate(&host_dat, &dev_dat, factSz, &bmp);
+  dev_res = ssb_bmp_fixed(&dev_dat, &bmp, factSz);
+  fflush(stdout);
+  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
+             cudaMemcpyDeviceToHost);
+  for (size_t i = 0; i < SUMGRP_ALL; i++) {
+    if (host_res[i] != xfertmp[i]) {
+      fprintf(stderr, "\nFixed mismatch at %zu: host=%u, dev=%u", i, host_res[i],
+              xfertmp[i]);
+      matches = false;
+    }
+  }
+  cudaFree(dev_res);
+  ssb_bmpfree(&bmp);
 
   dev_res = ssb_gpujoin(&dev_dat, factSz);
   fflush(stdout);
@@ -322,16 +333,12 @@ bool ssb_demoall(const char *ssbDirname) {
              cudaMemcpyDeviceToHost);
   for (size_t i = 0; i < SUMGRP_ALL; i++) {
     if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "Join mismatch at %zu: host=%u, dev=%u\n", i, host_res[i],
+      fprintf(stderr, "\nJoin mismatch at %zu: host=%u, dev=%u", i, host_res[i],
               xfertmp[i]);
-      matches = false; break;
+      matches = false;
     }
   }
   cudaFree(dev_res);
-
-  // TODO: fixed-layout here
-  ssb_bmpfree(bmp);
-  free(bmp);
 
   dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
   fflush(stdout);
@@ -339,7 +346,7 @@ bool ssb_demoall(const char *ssbDirname) {
              cudaMemcpyDeviceToHost);
   for (size_t i = 0; i < SUMGRP_ALL; i++) {
     if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "BmpAbl mismatch at %zu: host=%u, dev=%u\n", i,
+      fprintf(stderr, "\nBmpAblFuse mismatch at %zu: host=%u, dev=%u", i,
               host_res[i], xfertmp[i]);
       matches = false;
     }
@@ -352,7 +359,7 @@ bool ssb_demoall(const char *ssbDirname) {
              cudaMemcpyDeviceToHost);
   for (size_t i = 0; i < SUMGRP_ALL; i++) {
     if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "BmpAbl mismatch at %zu: host=%u, dev=%u\n", i,
+      fprintf(stderr, "\nBmpAblNfuse mismatch at %zu: host=%u, dev=%u", i,
               host_res[i], xfertmp[i]);
       matches = false;
     }
@@ -365,9 +372,9 @@ bool ssb_demoall(const char *ssbDirname) {
              cudaMemcpyDeviceToHost);
   for (size_t i = 0; i < SUMGRP_ALL; i++) {
     if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "Bmp mismatch at %zu: host=%u, dev=%u\n", i, host_res[i],
-              xfertmp[i]);
-      matches = false; break;
+      fprintf(stderr, "\nBmpCtrl mismatch at %zu: host=%u, dev=%u", i,
+              host_res[i], xfertmp[i]);
+      matches = false;
     }
   }
   cudaFree(dev_res);
