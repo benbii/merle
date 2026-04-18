@@ -4,8 +4,7 @@ using namespace mybmpidx;
 using namespace mybmpidx::abla;
 using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
-static constexpr auto AND = vprg::AND, OR = vprg::OR, ANDM = vprg::ANDM,
-                      LOAD = vprg::ORM, END = vprg::END;
+static constexpr auto AND = vprg::AND, ANDM = vprg::ANDM, LOAD = vprg::ORM;
 
 static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
 static constexpr size_t nv_ = nt * vt, nv32 = nv_ * 32;
@@ -39,7 +38,7 @@ static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
         noprg_abla<nt, vt, vt0, false><<<ceil_div(factsz, nv32), nt>>>( \
           a, grp_out, nr_grp, op); break; \
       case 2: \
-        noprg_abla<nt, vt, vt0, true><<<ceil_div(factsz, nv32), nt>>>( \
+        noprg_abla<nt, cp_vt, vt0, true><<<ceil_div(factsz, cp_nv32), nt>>>( \
           a, grp_out, nr_grp, op); break; \
       case 3: case 4: \
         cudaMemset(idxbuf, 0, sizeof(uint) * 3 * ceil_div(factsz, 32)); \
@@ -48,7 +47,7 @@ static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
       case 5: \
         cudaMemset(grp_out, 0, sizeof(uint) * nr_grp); \
         cudaMemset(idxbuf, 0, sizeof(uint) * 6 * ceil_div(factsz, 32)); \
-        base_fuse<nt, vt, true><<<ceil_div(factsz, nv32), nt>>>( \
+        base_fuse<nt, cp_vt, true><<<ceil_div(factsz, cp_nv32), nt>>>( \
           p, grp_out, nr_grp, op, idxbuf); break; \
       } \
     } \
@@ -56,24 +55,7 @@ static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
     cudaEventElapsedTime(&msec, start, stop); \
     printf("\t%.4f", msec / ndup); \
     p.release(); \
-  } cudaFree(idxbuf); cudaEventDestroy(start); cudaEventDestroy(stop);  /* \
-  for (size_t i = 0; i < 3; ++i) { \
-    vprg p = i == 0 ? r.perfect(igood) \
-                    : (i == 1 ? r.many_or(igood) : r.candchk(igood)); \
-    float4 foo, bar = {0.0,0.0,0.0,0.0};\
-    for (size_t d = 0; d < ndup; ++d) { \
-      if (i == 2) \
-        foo = nofuse_abla<nt, cp_vt, vt, vt, true>( \
-          p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
-      else \
-        foo = nofuse_abla<nt, cp_vt, vt, vt, false>( \
-          p, nr_grp, op, grp_out, d_possi, d_uncert, d_onelist); \
-      bar.x += foo.x; bar.y += foo.y; bar.z += foo.z; bar.w += foo.w; \
-    } \
-    bar.x /= ndup; bar.y /= ndup; bar.z /= ndup; bar.w /= ndup; \
-    printf("\t%.4f\t%.4f\t%.4f", bar.x, bar.y, bar.z); \
-    p.release(); \
-  } */
+  } cudaFree(idxbuf); cudaEventDestroy(start); cudaEventDestroy(stop);
 
 void s1fus(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
            uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,

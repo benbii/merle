@@ -1,4 +1,5 @@
 #include "lambdas.cuh"
+#include "../primitive_abla.cuh"
 using namespace mybmpidx;
 using cuda::ceil_div;
 static constexpr auto ANDM = vprg::ANDM, LOAD = vprg::ORM, AND = vprg::AND, NOT = vprg::NOT;
@@ -39,6 +40,26 @@ DOWORK(vprg &p, uint32_t *grp_out, size_t nr_grp, op_t &op, uint factsz) {
   cudaEventRecord(stop); cudaEventSynchronize(stop);
   cudaEventElapsedTime(&msec, start, stop);
   printf("\t%.4f", msec / ndup);
+
+  uint *idxbuf;
+  cudaMalloc(&idxbuf, sizeof(uint) * 6 * ceil_div(factsz, 32));
+  cudaEventRecord(start);
+  for (size_t d = 0; d < ndup; ++d) {
+    cudaMemset(grp_out, 0, nr_grp * sizeof(uint));
+    if (p.is_nochk()) {
+      cudaMemset(idxbuf, 0, sizeof(uint) * 3 * ceil_div(factsz, 32));
+      abla::base_fuse<nt, vt, false>
+          <<<ceil_div(factsz, nv32), nt>>>(p, grp_out, nr_grp, op, idxbuf);
+    } else {
+      cudaMemset(idxbuf, 0, sizeof(uint) * 6 * ceil_div(factsz, 32));
+      abla::base_fuse<nt, cp_vt, true>
+          <<<ceil_div(factsz, cp_nv32), nt>>>(p, grp_out, nr_grp, op, idxbuf);
+    }
+  }
+  cudaEventRecord(stop); cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&msec, start, stop);
+  printf("\t%.4f", msec / ndup);
+  cudaFree(idxbuf);
   cudaEventDestroy(start); cudaEventDestroy(stop);
 }
 
@@ -139,7 +160,7 @@ void s4fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
 uint32_t *ssb_bmp_fixed(const ssb_schema *dat, ssb_bmp* bmp, size_t factSz) {
   uint32_t *res;
   cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
-  printf("\nCase\tSparse\tMedium\tDense\nSSB11");
+  printf("\nCase\tSparse\tSpBfus\tMedium\tMeBfus\tDense\tDeBfus\nSSB11");
   s1fix(dat, bmp, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res);
   printf("\nSSB12");
   s1fix(dat, bmp, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
