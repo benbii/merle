@@ -215,8 +215,16 @@ struct vprg {
         if (dst == 0) break; // 0 words are fairly common
         const col &memop = cols[instr_.src1];
         #pragma unroll
-        for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
+        for (uint k = 0; k < MAXBIN_PERCOL; ++k) {
+          if (memop.middle[k] == nullptr)
+            goto andDone;
           thecol |= __ldcs(&memop.middle[k][wordpos]); // full 1 words are nonexistent
+        }
+        if (memop.leftmost != nullptr)
+          thecol |= __ldcs(&memop.leftmost[wordpos]);
+        if (memop.rightmost != nullptr)
+          thecol |= __ldcs(&memop.rightmost[wordpos]);
+      andDone:
         dst &= thecol;
         myshm[instr_.dstreg] = dst; break;
       }
@@ -225,8 +233,16 @@ struct vprg {
         uint dst = myshm[instr_.dstreg];
         const col &memop = cols[instr_.src1];
         #pragma unroll
-        for (uint k = 0; k < MAXBIN_PERCOL && memop.middle[k]; ++k)
+        for (uint k = 0; k < MAXBIN_PERCOL; ++k) {
+          if (memop.middle[k] == nullptr)
+            goto orDone;
           dst |= __ldcs(&memop.middle[k][wordpos]);
+        }
+        if (memop.leftmost != nullptr)
+          dst |= __ldcs(&memop.leftmost[wordpos]);
+        if (memop.rightmost != nullptr)
+          dst |= __ldcs(&memop.rightmost[wordpos]);
+      orDone:
         myshm[instr_.dstreg] = dst; break;
       }
       default: __builtin_unreachable();

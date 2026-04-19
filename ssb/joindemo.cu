@@ -68,9 +68,9 @@ uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz) {
   cudaEventRecord(stop); \
   cudaEventSynchronize(stop); \
   cudaEventElapsedTime(&msec, start, stop); \
-  printf(#name"\t%.4f\n", msec / 100);
+  printf("\n"#name"\t%.4f", msec / 100);
 
-  printf("\n\nCase\tJoin\n");
+  printf("\n\nCase\tJoin");
   T(s1dev(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res), SSB11);
   T(s1dev(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1), SSB12);
   T(s1dev(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2), SSB13);

@@ -301,6 +301,23 @@ uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz) {
   return res;
 }
 
+static bool _bruh(const uint32_t *host_res, uint32_t *dev_res, const char *a) {
+  bool matches = true;
+  fflush(stdout);
+  uint32_t xfertmp[SUMGRP_ALL];
+  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
+             cudaMemcpyDeviceToHost);
+  for (size_t i = 0; i < SUMGRP_ALL; i++) {
+    if (host_res[i] != xfertmp[i]) {
+      fprintf(stderr, "\n%s mismatch at %zu: host=%u, dev=%u", a, i,
+              host_res[i], xfertmp[i]);
+      matches = false;
+    }
+  }
+  cudaFree(dev_res);
+  return matches;
+}
+
 bool ssb_demoall(const char *ssbDirname) {
   struct ssb_schema host_dat, dev_dat;
   size_t factSz = ssb_load(&host_dat, &dev_dat, ssbDirname);
@@ -314,70 +331,17 @@ bool ssb_demoall(const char *ssbDirname) {
   struct ssb_bmp bmp;
   ssb_bmpcreate(&host_dat, &dev_dat, factSz, &bmp);
   dev_res = ssb_bmp_fixed(&dev_dat, &bmp, factSz);
-  fflush(stdout);
-  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
-             cudaMemcpyDeviceToHost);
-  for (size_t i = 0; i < SUMGRP_ALL; i++) {
-    if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "\nFixed mismatch at %zu: host=%u, dev=%u", i, host_res[i],
-              xfertmp[i]);
-      matches = false;
-    }
-  }
-  cudaFree(dev_res);
+  matches &= _bruh(host_res, dev_res, "Fixed layout");
   ssb_bmpfree(&bmp);
 
   dev_res = ssb_gpujoin(&dev_dat, factSz);
-  fflush(stdout);
-  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
-             cudaMemcpyDeviceToHost);
-  for (size_t i = 0; i < SUMGRP_ALL; i++) {
-    if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "\nJoin mismatch at %zu: host=%u, dev=%u", i, host_res[i],
-              xfertmp[i]);
-      matches = false;
-    }
-  }
-  cudaFree(dev_res);
-
-  dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
-  fflush(stdout);
-  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
-             cudaMemcpyDeviceToHost);
-  for (size_t i = 0; i < SUMGRP_ALL; i++) {
-    if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "\nBmpAblFuse mismatch at %zu: host=%u, dev=%u", i,
-              host_res[i], xfertmp[i]);
-      matches = false;
-    }
-  }
-  cudaFree(dev_res);
-
-  dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);
-  fflush(stdout);
-  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
-             cudaMemcpyDeviceToHost);
-  for (size_t i = 0; i < SUMGRP_ALL; i++) {
-    if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "\nBmpAblNfuse mismatch at %zu: host=%u, dev=%u", i,
-              host_res[i], xfertmp[i]);
-      matches = false;
-    }
-  }
-  cudaFree(dev_res);
-
+  matches &= _bruh(host_res, dev_res, "Join");
   dev_res = ssb_bmp_control(&dev_dat, factSz);
-  fflush(stdout);
-  cudaMemcpy(xfertmp, dev_res, SUMGRP_ALL * sizeof(uint32_t),
-             cudaMemcpyDeviceToHost);
-  for (size_t i = 0; i < SUMGRP_ALL; i++) {
-    if (host_res[i] != xfertmp[i]) {
-      fprintf(stderr, "\nBmpCtrl mismatch at %zu: host=%u, dev=%u", i,
-              host_res[i], xfertmp[i]);
-      matches = false;
-    }
-  }
-  cudaFree(dev_res);
+  matches &= _bruh(host_res, dev_res, "Controlled Layout");
+  dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
+  matches &= _bruh(host_res, dev_res, "Fused Ablation");
+  dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);
+  matches &= _bruh(host_res, dev_res, "Non-fused Ablation");
 
   free(host_res);
   free(xfertmp);
