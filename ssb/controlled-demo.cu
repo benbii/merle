@@ -2,8 +2,7 @@
 using namespace mybmpidx;
 using cuda::ceil_div;
 static constexpr auto nodim = recipe::nodim;
-static constexpr auto AND = vprg::AND, OR = vprg::OR, NOT = vprg::NOT,
-                      ANDM = vprg::ANDM, ORM = vprg::ORM, END = vprg::END;
+static constexpr auto ANDM = vprg::ANDM, LOAD = vprg::ORM, END = vprg::END;
 
 // vt0=8 is sufficient for SSB
 static constexpr size_t nt = 256, vt = 3, vt0 = 8, ndup = 100;
@@ -55,7 +54,7 @@ void s1bmp(const struct ssb_schema *dat, uint factsz, uint16_t dateMin,
               .fk = {nullptr, nullptr, nullptr},
               .attr = {dat->loOrderDate, dat->loDiscount, dat->loQuantity}};
   constexpr size_t nr_grp = 1;
-  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
+  vprg::instr instrs[MAXNINSTR] = {{LOAD, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
   DOWORK
 }
 
@@ -75,7 +74,7 @@ void s2bmp(const struct ssb_schema *dat, uint factsz, uint16_t pMfgrMin,
               .dimsz = {nodim, nodim},
               .fk = {dat->loPartKey, nullptr},
               .attr = {dat->partMfgr, dat->loSuppCity}};
-  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}};
+  vprg::instr instrs[MAXNINSTR] = {{LOAD, 0, 0}, {ANDM, 0, 1}};
   DOWORK
 }
 
@@ -93,7 +92,7 @@ void s3bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .dimsz = {nodim, nodim, nodim},
               .fk = {dat->loCustKey, nullptr, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->loOrderDate}};
-  vprg::instr instrs[MAXNINSTR] = {{ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
+  vprg::instr instrs[MAXNINSTR] = {{LOAD, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}};
   DOWORK
 }
 
@@ -112,7 +111,7 @@ void s4bmp(const struct ssb_schema *dat, uint factsz, uint8_t cCityMin,
               .fk = {dat->loCustKey, nullptr, dat->loPartKey, nullptr},
               .attr = {dat->custCity, dat->loSuppCity, dat->partMfgr, dat->loOrderDate}};
   vprg::instr instrs[MAXNINSTR] = {
-      {ORM, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}, {ANDM, 0, 3}};
+      {LOAD, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}, {ANDM, 0, 3}};
   if (dateMin <= SSBDATE_920101 && dateMax >= SSBDATE_990101)
     r.attr[3] = nullptr, instrs[3].opcode = END;
   DOWORK

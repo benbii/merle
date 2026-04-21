@@ -24,48 +24,100 @@ static constexpr size_t cp_vt = vt, cp_nv32 = nv32;
 static constexpr size_t cp_vt = 2, cp_nv = nt * cp_vt, cp_nv32 = cp_nv * 32;
 #endif
 
-template<typename op_t> static void
-DOWORK(vprg &p, uint32_t *grp_out, size_t nr_grp, op_t &op, uint factsz) {
+template <typename op_t>
+static void DOWORK(const char *a, const char *b, vprg &p, uint32_t *grp_out,
+                   size_t nr_grp, op_t &op, uint factsz, bool join = false) {
+  printf(join ? "\n%s\t%s" : "\n%s\t%s\t0", a, b);
   cudaEvent_t start, stop; float msec;
-  cudaEventCreate(&start); cudaEventCreate(&stop); cudaEventRecord(start);
-  for (size_t d = 0; d < ndup; ++d) {
-    cudaMemset(grp_out, 0, nr_grp * sizeof(uint));
-    if (p.is_nochk())
-      vprg_grpby<nt, vt, vt0, false>
-          <<<ceil_div(factsz, nv32), nt>>>(p, grp_out, nr_grp, op);
-    else
-      vprg_grpby<nt, cp_vt, vt0, true>
-          <<<ceil_div(factsz, cp_nv32), nt>>>(p, grp_out, nr_grp, op);
-  }
-  cudaEventRecord(stop); cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&msec, start, stop);
-  printf("\t%.4f", msec / ndup);
-
-  uint *idxbuf;
+  cudaEventCreate(&start), cudaEventCreate(&stop);
+  uint *idxbuf, *possi, *uncert, *onelist, h_count = 6666;
   cudaMalloc(&idxbuf, sizeof(uint) * 6 * ceil_div(factsz, 32));
-  cudaEventRecord(start);
-  for (size_t d = 0; d < ndup; ++d) {
-    cudaMemset(grp_out, 0, nr_grp * sizeof(uint));
-    if (p.is_nochk()) {
-      cudaMemset(idxbuf, 0, sizeof(uint) * 3 * ceil_div(factsz, 32));
-      abla::base_fuse<nt, vt, false>
-          <<<ceil_div(factsz, nv32), nt>>>(p, grp_out, nr_grp, op, idxbuf);
-    } else {
-      cudaMemset(idxbuf, 0, sizeof(uint) * 6 * ceil_div(factsz, 32));
-      abla::base_fuse<nt, cp_vt, true>
-          <<<ceil_div(factsz, cp_nv32), nt>>>(p, grp_out, nr_grp, op, idxbuf);
+  cudaMalloc(&possi, ceil_div(factsz, 32) * sizeof(uint));
+  cudaMalloc(&uncert, ceil_div(factsz, 32) * sizeof(uint));
+  cudaMalloc(&onelist, ceil_div(factsz, 10) * sizeof(uint));
+  if (!onelist || !uncert || !possi || !idxbuf)
+    exit(fprintf(stderr, __FILE__ " CUDA OOM\n"));
+
+  for (size_t i = join ? 0 : 2; i < 14; i += 2) {
+    cudaEventRecord(start);
+    for (size_t d = 0; d < ndup; ++d) {
+      switch (i + (size_t)p.is_nochk()) {
+      case 0: case 1: // join
+        cudaMemset(grp_out, 0, nr_grp * sizeof(uint32_t));
+        grpby<256, 4>
+            <<<ceil_div(factsz, 256 * 4), 256, nr_grp * sizeof(uint)>>>(
+                factsz, grp_out, nr_grp, op); break;
+      case 2: // OUR WORKS; PLEASE BE THE BEST PERFORMING ONE
+        cudaMemset(grp_out + SUMGRP_ALL, 0, nr_grp * sizeof(uint32_t));
+        vprg_grpby<nt, cp_vt, vt0, true><<<ceil_div(factsz, cp_nv32), nt>>>(
+            p, grp_out + SUMGRP_ALL, nr_grp, op); break;
+      case 3:
+        cudaMemset(grp_out + SUMGRP_ALL, 0, nr_grp * sizeof(uint32_t));
+        vprg_grpby<nt, vt, vt0, false><<<ceil_div(factsz, nv32), nt>>>(
+            p, grp_out + SUMGRP_ALL, nr_grp, op); break;
+      case 4: // baseline fusion; bins go to gmem, naively pasted on the rest
+        cudaMemset(grp_out + SUMGRP_ALL * 2, 0, nr_grp * sizeof(uint32_t));
+        cudaMemset(idxbuf, 0, sizeof(uint) * 6 * ceil_div(factsz, 32));
+        abla::base_fuse<nt, cp_vt, true><<<ceil_div(factsz, cp_nv32), nt>>>(
+            p, grp_out + SUMGRP_ALL * 2, nr_grp, op, idxbuf); break;
+      case 5:
+        cudaMemset(grp_out + SUMGRP_ALL * 2, 0, nr_grp * sizeof(uint32_t));
+        cudaMemset(idxbuf, 0, sizeof(uint) * 3 * ceil_div(factsz, 32));
+        abla::base_fuse<nt, vt, false><<<ceil_div(factsz, nv32), nt>>>(
+            p, grp_out + SUMGRP_ALL * 2, nr_grp, op, idxbuf); break;
+      case 6: // basically no fusion at all; bins and intermediates in gmem
+        cudaMemset(idxbuf, 0, sizeof(uint) * 6 * ceil_div(factsz, 32));
+        abla::_stg1<nt, cp_vt, true>
+            <<<ceil_div(factsz, cp_nv32), nt>>>(p, possi, uncert, idxbuf);
+        break;
+      case 7:
+        cudaMemset(idxbuf, 0, sizeof(uint) * 3 * ceil_div(factsz, 32));
+        abla::_stg1<nt, vt, false>
+            <<<ceil_div(factsz, nv32), nt>>>(p, possi, uncert, idxbuf);
+        break;
+      case 8: // stage 1 of virtual-program-only fusion; bins go to smem
+        abla::_stg1<nt, cp_vt, true>
+            <<<ceil_div(factsz, cp_nv32), nt>>>(p, possi, uncert, nullptr);
+        break;
+      case 9: // stage 1 of virtual-program-only fusion; no checking
+        abla::_stg1<nt, vt, false>
+            <<<ceil_div(factsz, nv32), nt>>>(p, possi, uncert, nullptr);
+        break;
+      case 10: // stage 2 of separate bitmap & join
+        cudaMemset(idxbuf, 0, sizeof(uint));
+        // idxbuf no longer used; reuse idxbuf[0] as popcount
+        abla::_stg2<nt, vt, true><<<ceil_div(factsz, nv32), nt>>>(
+            possi, factsz, idxbuf, onelist, uncert); break;
+      case 11:
+        cudaMemset(idxbuf, 0, sizeof(uint));
+        abla::_stg2<nt, vt, false><<<ceil_div(factsz, nv32), nt>>>(
+            possi, factsz, idxbuf, onelist, uncert); break;
+      case 12:
+        cudaMemcpy(&h_count, idxbuf, sizeof(uint), cudaMemcpyDeviceToHost);
+        cudaMemset(grp_out + SUMGRP_ALL * 3, 0, nr_grp * sizeof(uint32_t));
+        abla::_stg3<nt, vt, true><<<ceil_div(h_count, nv_), nt, nr_grp * 4>>>(
+            onelist, h_count, grp_out + SUMGRP_ALL * 3, nr_grp, op); break;
+      case 13:
+        cudaMemcpy(&h_count, idxbuf, sizeof(uint), cudaMemcpyDeviceToHost);
+        cudaMemset(grp_out + SUMGRP_ALL * 3, 0, nr_grp * sizeof(uint32_t));
+        abla::_stg3<nt, vt, false><<<ceil_div(h_count, nv_), nt, nr_grp * 4>>>(
+            onelist, h_count, grp_out + SUMGRP_ALL * 3, nr_grp, op); break;
+      }
+      if (cudaGetLastError() != cudaSuccess)
+        exit(fprintf(stderr, "CUDA ERROR i=%zu d=%zu h=%u\n", i, d, h_count));
     }
+
+    cudaEventRecord(stop); cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&msec, start, stop);
+    printf("\t%.4f", msec / ndup);
   }
-  cudaEventRecord(stop); cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&msec, start, stop);
-  printf("\t%.4f", msec / ndup);
-  cudaFree(idxbuf);
-  cudaEventDestroy(start); cudaEventDestroy(stop);
+  cudaEventDestroy(start), cudaEventDestroy(stop);
+  cudaFree(idxbuf), cudaFree(possi), cudaFree(uncert), cudaFree(onelist);
 }
 
-void s1fix(const ssb_schema *dat, ssb_bmp *bmp, uint factsz, uint16_t dateMin,
-           uint16_t dateMax, uint8_t discntMin, uint8_t discntMax,
-           uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {
+void s1fix(const char *a, const ssb_schema *dat, ssb_bmp *bmp, uint factsz,
+           uint16_t dateMin, uint16_t dateMax, uint8_t discntMin,
+           uint8_t discntMax, uint8_t qtyMin, uint8_t qtyMax, uint32_t *grp_out) {
   s1op op {
       dateMin, dateMax, dat->loOrderDate,
       discntMin, discntMax, dat->loDiscount,
@@ -75,16 +127,16 @@ void s1fix(const ssb_schema *dat, ssb_bmp *bmp, uint factsz, uint16_t dateMin,
             .factsz = factsz,
             .instrs = {{LOAD, 0, 0}, {ANDM, 0, 1}, {ANDM, 0, 2}}};
   static constexpr size_t nr_grp = 1;
-  DOWORK(p, grp_out, nr_grp, op, factsz); // sparse
+  DOWORK(a, "Sparse", p, grp_out, nr_grp, op, factsz, true); // sparse
   p.cols[1] = DENSE(discnt);
   p.cols[2] = DENSE(qty);
-  DOWORK(p, grp_out, nr_grp, op, factsz); // balanced
+  DOWORK(a, "Medium", p, grp_out, nr_grp, op, factsz); // balanced
   p.cols[0] = DENSE(date);
-  DOWORK(p, grp_out, nr_grp, op, factsz); // dense
+  DOWORK(a, "Dense", p, grp_out, nr_grp, op, factsz); // dense
   // DO NOT CALL `p.release()`! Bitmaps are owned by `bmp`, not `p`!
 }
 
-void s2fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
+void s2fix(const char *a, const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
            uint16_t mfgrMin, uint16_t mfgrMax, uint8_t sCityMin,
            uint8_t sCityMax, uint *grp_out, size_t nr_grp) {
   s2op op {
@@ -95,15 +147,15 @@ void s2fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
   vprg p = {.cols = {SPARSE(mfgr), SPARSE(sCity)},
             .factsz = factsz,
             .instrs = {{LOAD, 0, 0}, {ANDM, 0, 1}}};
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Sparse", p, grp_out, nr_grp, op, factsz, true);
   p.cols[0] = DENSE(mfgr);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Medium", p, grp_out, nr_grp, op, factsz);
   p.cols[1] = DENSE(sCity);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Dense", p, grp_out, nr_grp, op, factsz);
 }
 
-void s3fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
-           uint8_t cCityMin, uint8_t cCityMax, uint8_t sCityMin,
+void s3fix(const char *a, const struct ssb_schema *dat, ssb_bmp *bmp,
+           uint factsz, uint8_t cCityMin, uint8_t cCityMax, uint8_t sCityMin,
            uint8_t sCityMax, uint16_t dateMin, uint16_t dateMax,
            uint32_t *grp_out, size_t nr_grp) {
   s3op op {
@@ -125,18 +177,19 @@ void s3fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
 
   p.cols[2] = SPARSE(date);
   // `op` was already initialized to the original dateMin and dateMax
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Sparse", p, grp_out, nr_grp, op, factsz, true);
   p.cols[0] = DENSE(cCity);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Medium", p, grp_out, nr_grp, op, factsz);
   p.cols[1] = DENSE(sCity);
   p.cols[2] = DENSE(date);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Dense", p, grp_out, nr_grp, op, factsz);
 }
 
-void s4fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
-           uint8_t cCityMin, uint8_t cCityMax, uint8_t sCityMin,
+void s4fix(const char *a, const struct ssb_schema *dat, ssb_bmp *bmp,
+           uint factsz, uint8_t cCityMin, uint8_t cCityMax, uint8_t sCityMin,
            uint8_t sCityMax, uint16_t mfgrMin, uint16_t mfgrMax,
-           uint16_t dateMin, uint16_t dateMax, uint32_t *grp_out, size_t nr_grp) {
+           uint16_t dateMin, uint16_t dateMax, uint32_t *grp_out,
+           size_t nr_grp) {
   s4op op{dat->loCustKey, dat->loPartKey,   cCityMin,       cCityMax,
           dat->custCity,  sCityMin,         sCityMax,       dat->loSuppCity,
           mfgrMin,        mfgrMax,          dat->partMfgr,  dateMin,
@@ -148,53 +201,46 @@ void s4fix(const struct ssb_schema *dat, ssb_bmp *bmp, uint factsz,
     p.cols[3] = SPARSE(date);
     p.instrs[3] = {ANDM, 0, 3};
   }
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Sparse", p, grp_out, nr_grp, op, factsz, true);
   // Q4X do not have month-bounded queries
   p.cols[0] = DENSE(cCity);
   p.cols[2] = DENSE(mfgr);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Medium", p, grp_out, nr_grp, op, factsz);
   p.cols[1] = DENSE(sCity);
-  DOWORK(p, grp_out, nr_grp, op, factsz);
+  DOWORK(a, "Dense", p, grp_out, nr_grp, op, factsz);
 }
 
 uint32_t *ssb_bmp_fixed(const ssb_schema *dat, ssb_bmp* bmp, size_t factSz) {
   uint32_t *res;
-  cudaMalloc(&res, (SUMGRP_ALL + 1) * sizeof(uint32_t));
-  printf("\nCase\tSparse\tSpBfus\tMedium\tMeBfus\tDense\tDeBfus\nSSB11");
-  s1fix(dat, bmp, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25, res);
-  printf("\nSSB12");
-  s1fix(dat, bmp, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36, res + 1);
-  printf("\nSSB13");
-  s1fix(dat, bmp, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36, res + 2);
+  cudaMalloc(&res, SUMGRP_ALL * sizeof(uint32_t) * 4);
+  printf("\nCase\tBinType\tJoin\tOurs\tBasefus\tNfuStg1\tPrgStg1\tStg2\tStg3");
+  s1fix("SSB11", dat, bmp, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 1, 25,
+        res);
+  s1fix("SSB12", dat, bmp, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36,
+        res + 1);
+  s1fix("SSB13", dat, bmp, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36,
+        res + 2);
 
-  printf("\nSSB21");
-  s2fix(dat, bmp, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21);
-  printf("\nSSB22");
-  s2fix(dat, bmp, factSz, 260, 268, 200, 250, res + SUMGRP_S1 + NGRP_S21, NGRP_S22);
-  printf("\nSSB23");
-  s2fix(dat, bmp, factSz, 260, 261, 50, 100, res + SUMGRP_S1 + NGRP_S21 + NGRP_S22, NGRP_S23);
+  s2fix("SSB21", dat, bmp, factSz, 40, 80, 150, 200, res + SUMGRP_S1, NGRP_S21);
+  s2fix("SSB22", dat, bmp, factSz, 260, 268, 200, 250,
+        res + SUMGRP_S1 + NGRP_S21, NGRP_S22);
+  s2fix("SSB23", dat, bmp, factSz, 260, 261, 50, 100,
+        res + SUMGRP_S1 + NGRP_S21 + NGRP_S22, NGRP_S23);
 
-  printf("\nSSB31");
-  s3fix(dat, bmp, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
-        res + SUMGRP_S2, NGRP_S31);
-  printf("\nSSB32");
-  s3fix(dat, bmp, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
-        res + SUMGRP_S2 + NGRP_S31, NGRP_S32);
-  printf("\nSSB33");
-  s3fix(dat, bmp, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101,
-        res + SUMGRP_S2 + NGRP_S31 + NGRP_S32, NGRP_S33);
-  printf("\nSSB34");
-  s3fix(dat, bmp, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101,
-        res + SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33, NGRP_S34);
+  s3fix("SSB31", dat, bmp, factSz, 200, 250, 200, 250, SSBDATE_920101,
+        SSBDATE_980101, res + SUMGRP_S2, NGRP_S31);
+  s3fix("SSB32", dat, bmp, factSz, 190, 200, 190, 200, SSBDATE_920101,
+        SSBDATE_980101, res + SUMGRP_S2 + NGRP_S31, NGRP_S32);
+  s3fix("SSB33", dat, bmp, factSz, 51, 55, 51, 55, SSBDATE_920101,
+        SSBDATE_980101, res + SUMGRP_S2 + NGRP_S31 + NGRP_S32, NGRP_S33);
+  s3fix("SSB34", dat, bmp, factSz, 51, 55, 51, 55, SSBDATE_971201,
+        SSBDATE_980101, res + SUMGRP_S2 + NGRP_S31 + NGRP_S32 + NGRP_S33, NGRP_S34);
 
-  printf("\nSSB41");
-  s4fix(dat, bmp, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101,
+  s4fix("SSB41", dat, bmp, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101,
         SSBDATE_990101, res + SUMGRP_S3, NGRP_S41);
-  printf("\nSSB42");
-  s4fix(dat, bmp, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101,
+  s4fix("SSB42", dat, bmp, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101,
         SSBDATE_990101, res + SUMGRP_S3 + NGRP_S41, NGRP_S42);
-  printf("\nSSB43");
-  s4fix(dat, bmp, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101,
+  s4fix("SSB43", dat, bmp, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101,
         SSBDATE_990101, res + SUMGRP_S3 + NGRP_S41 + NGRP_S42, NGRP_S43);
   return res;
 }

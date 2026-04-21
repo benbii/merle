@@ -323,10 +323,9 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
       atomicAdd(out + i, shared.cta_grp[i]);
 }
 
-namespace {
 template <int nt, int vt, bool chk>
 __global__ void _stg1(vprg data, uint *__restrict__ poss,
-                      uint *__restrict__ uncert) {
+                      uint *__restrict__ uncert, uint *idxbuf = nullptr) {
   static_assert(nt % 32 == 0, "nt must be a multiple of 32");
   static_assert(vt > 0,        "vt must be > 0");
   // One 32-bit word per 32 rows
@@ -334,13 +333,15 @@ __global__ void _stg1(vprg data, uint *__restrict__ poss,
   __shared__ uint s_buf[(chk ? 6 : 3) * vt * nt];
   const uint t    = threadIdx.x;
   const uint base = blockIdx.x * (nt * vt);
+  if (idxbuf != nullptr)
+    idxbuf = idxbuf + base * (chk ? 6 : 3);
 
-  #pragma unroll
+#pragma unroll
   for (int k = 0; k < vt; ++k) {
     const uint wpos  = base + t + k * nt;
     uint2 res        = make_uint2(0u, 0u);
     if (wpos < nwords) {
-      uint* mybuf = &s_buf[(t + k * nt) * (chk ? 6 : 3)];
+      uint* mybuf = (idxbuf ? idxbuf : s_buf) + (t + k * nt) * (chk ? 6 : 3);
       // Compute masks via virtual program (coalesced loads inside)
       res = chk ? data.chk(wpos, mybuf) : data.nochk(wpos, mybuf);
       // Coalesced stores (one 32b word per lane to consecutive addresses)
@@ -455,12 +456,11 @@ __global__ void _stg3(const uint *__restrict__ onelist, uint sz,
     if (x) atomicAdd(out + i, x);
   }
 }
-} // namespace
 
 template <int nt, int vt1, int vt2, int vt3, bool chk, typename Op>
 float4 nofuse_abla(const vprg &data, uint nr_grp, Op op, uint *d_grpout,
                    uint *d_possi, uint *d_uncert, uint *d_onelist,
-                   cudaStream_t stream = 0) {
+                   uint *d_idxbuf = nullptr, cudaStream_t stream = 0) {
   const uint factsz = data.factsz, nwords = (factsz + 31u) >> 5;
   uint *d_count = &d_grpout[nr_grp];
   cudaError_t err;
@@ -474,7 +474,7 @@ float4 nofuse_abla(const vprg &data, uint nr_grp, Op op, uint *d_grpout,
   if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
   // for (size_t i = 0; i < 100; ++i) {
     _stg1<nt, vt1, chk><<<cuda::ceil_div(nwords, nt * vt1), nt, 0, stream>>>(
-      data, d_possi, d_uncert);
+      data, d_possi, d_uncert, d_idxbuf);
     if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
   // }
   cudaEventRecord(stop, stream); cudaEventSynchronize(stop);

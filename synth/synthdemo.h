@@ -29,30 +29,31 @@ void synth_free(struct synth_schema* host, struct synth_schema* dev);
 void synth_ref(const struct synth_schema *host, size_t factsz, uint64_t fa1low,
                uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi, uint64_t da1low,
                uint64_t da1hi, uint32_t grpout[256]);
-void synth_join(const struct synth_schema *dev, size_t factsz, uint64_t fa1low,
+float synth_join(const struct synth_schema *dev, size_t factsz, uint64_t fa1low,
                uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi, uint64_t da1low,
                uint64_t da1hi, uint32_t grpout[256]);
-float4 synth_bmp(const struct synth_schema *dat, uint32_t factsz,
-                 uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi,
-                 uint32_t da1lo, uint32_t da1hi, uint32_t grpout[256], int ty);
 float2 synth_method(const struct synth_schema *dat, uint32_t factsz,
                     uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo,
                     uint32_t fa2hi, uint32_t da1lo, uint32_t da1hi);
-void synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
+float synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
                uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
                uint32_t da1hi);
 
 
 bool synth_demoall(const char *synthDirname);
 
-/**
- * Calculate window probabilities for Zipf distribution
- * @param skewness The skewness parameter for Zipf distribution
- * @param n The number of windows to calculate
- * @param winsize The size of each window
- * @return Array of probabilities for windows [x, x+winsize) where x in [0, n)
- */
-double *window_zipf(double skewness, size_t n, size_t winsize);
+#define NBIN 32
+struct synth_bmp {
+  uint32_t* f1[NBIN / 2], *f2[NBIN / 2], *d1[NBIN / 2];
+  uint64_t fBound[NBIN / 2 + 1], dBound[NBIN / 2 + 1];
+};
+void synth_bmpcreate(size_t factSz, const struct synth_schema *dat,
+                     struct synth_bmp *devOut);
+void synth_bmpfree(struct synth_bmp *dev);
+float4 synth_bmpdemo(const struct synth_schema *dat, struct synth_bmp *bmp,
+                     uint32_t factsz, uint32_t fa1lo, uint32_t fa1hi,
+                     uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
+                     uint32_t da1hi, uint32_t grpout[]);
 
 #ifdef __cplusplus
 } /* extern "C" */

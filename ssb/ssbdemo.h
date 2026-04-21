@@ -87,7 +87,6 @@ enum {
 };
 
 uint32_t *ssb_cpujoin(const struct ssb_schema *dat, size_t factSz);
-uint32_t *ssb_gpujoin(const struct ssb_schema *dat, size_t factSz);
 uint32_t *ssb_bmp_fixed(const struct ssb_schema *dat, struct ssb_bmp *bmp,
                         size_t factSz);
 uint32_t *ssb_bmp_control(const struct ssb_schema *dat, size_t factSz);

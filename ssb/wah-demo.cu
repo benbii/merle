@@ -251,13 +251,13 @@ void ssb_wah(const struct ssb_schema *hostdat, const ssb_schema *dat,
     // SSB Q1 -- Q11 should be the most memory intensive one
     a = s1wah(dat, factSz, SSBDATE_930101, SSBDATE_940101, 1, 4, 0, 25);
     // RTScan running time extracted from the log, selected from 3 queries with
-    printf("\nCase\tWAH\tRTScan\nS11\t%.4f\t0.9978\n", a);
+    printf("\nCase\tWAH\tRTScan\nSSB11\t%.4f\t0.9978\n", a);
     a = s1wah(dat, factSz, SSBDATE_940101, SSBDATE_940201, 4, 7, 26, 36);
-    // similar selectivities as SSB Q1*. Why no SSB? Because it supports specific
-    printf("S12\t%.4f\t1.1918\n", a);
+    // similar selectivities as SSB Q1*. Why no SSB? Because it supports
+    printf("SSB12\t%.4f\t1.1918\n", a);
     a = s1wah(dat, factSz, SSBDATE_940204, SSBDATE_940211, 5, 8, 26, 36);
-    // unrealistic integer columns only, like distributions between 0~1e6!
-    printf("S13\t%.4f\t1.7910\n", a); // Pathetic 🙄.
+    // specific unrealistic integer columns only: distributions between 0~1e6!
+    printf("SSB13\t%.4f\t1.7910\n", a); // Pathetic 🙄.
   } catch (std::runtime_error &e) {
     poolSz += 1ul << 30;
     fprintf(stderr, "trying %zu GiB VRAM\n", poolSz >> 30);
@@ -268,21 +268,25 @@ void ssb_wah(const struct ssb_schema *hostdat, const ssb_schema *dat,
   }
 
   // SSB Q2
-  s2wah(dat, factSz, 40, 80, 150, 200, "S21", maxPartKey);
-  s2wah(dat, factSz, 260, 268, 200, 250, "S22", maxPartKey);
-  s2wah(dat, factSz, 260, 261, 50, 100, "S23", maxPartKey);
+  s2wah(dat, factSz, 40, 80, 150, 200, "SSB21", maxPartKey);
+  s2wah(dat, factSz, 260, 268, 200, 250, "SSB22", maxPartKey);
+  s2wah(dat, factSz, 260, 261, 50, 100, "SSB23", maxPartKey);
 
   // SSB Q3
-  s3wah(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101, "S31", maxCustKey);
-  s3wah(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101, "S32", maxCustKey);
-  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101, "S33", maxCustKey);
-  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101, "S34", maxCustKey);
+  s3wah(dat, factSz, 200, 250, 200, 250, SSBDATE_920101, SSBDATE_980101,
+        "SSB31", maxCustKey);
+  s3wah(dat, factSz, 190, 200, 190, 200, SSBDATE_920101, SSBDATE_980101,
+        "SSB32", maxCustKey);
+  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_920101, SSBDATE_980101, "SSB33",
+        maxCustKey);
+  s3wah(dat, factSz, 51, 55, 51, 55, SSBDATE_971201, SSBDATE_980101, "SSB34",
+        maxCustKey);
 
   // SSB Q4
-  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101, "S41",
-        maxCustKey, maxPartKey);
-  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101, "S42",
-        maxCustKey, maxPartKey);
-  s4wah(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101, SSBDATE_990101, "S43",
-        maxCustKey, maxPartKey);
+  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_920101, SSBDATE_990101,
+        "SSB41", maxCustKey, maxPartKey);
+  s4wah(dat, factSz, 150, 200, 150, 200, 0, 400, SSBDATE_970101, SSBDATE_990101,
+        "SSB42", maxCustKey, maxPartKey);
+  s4wah(dat, factSz, 150, 200, 190, 200, 120, 160, SSBDATE_970101,
+        SSBDATE_990101, "SSB43", maxCustKey, maxPartKey);
 }

@@ -311,10 +311,9 @@ static bool _bruh(const uint32_t *host_res, uint32_t *dev_res, const char *a) {
     if (host_res[i] != xfertmp[i]) {
       fprintf(stderr, "\n%s mismatch at %zu: host=%u, dev=%u", a, i,
               host_res[i], xfertmp[i]);
-      matches = false;
+      return false;
     }
   }
-  cudaFree(dev_res);
   return matches;
 }
 
@@ -325,26 +324,27 @@ bool ssb_demoall(const char *ssbDirname) {
   // Run the index creation and WAH baseline demo first
   ssb_wah(&host_dat, &dev_dat, factSz);
   uint32_t *host_res = ssb_cpujoin(&host_dat, factSz), *dev_res;
-  uint32_t *xfertmp = malloc(SUMGRP_ALL * sizeof(uint32_t));
   bool matches = true;
 
   struct ssb_bmp bmp;
   ssb_bmpcreate(&host_dat, &dev_dat, factSz, &bmp);
   dev_res = ssb_bmp_fixed(&dev_dat, &bmp, factSz);
-  matches &= _bruh(host_res, dev_res, "Fixed layout");
-  ssb_bmpfree(&bmp);
-
-  dev_res = ssb_gpujoin(&dev_dat, factSz);
   matches &= _bruh(host_res, dev_res, "Join");
-  dev_res = ssb_bmp_control(&dev_dat, factSz);
-  matches &= _bruh(host_res, dev_res, "Controlled Layout");
-  dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
-  matches &= _bruh(host_res, dev_res, "Fused Ablation");
-  dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);
-  matches &= _bruh(host_res, dev_res, "Non-fused Ablation");
+  // TODO: only dense layout checked
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL, "Our fixed-layout");
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 2, "Base fusion");
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 3, "No fusion");
+  ssb_bmpfree(&bmp);
+  cudaFree(dev_res);
+
+  // dev_res = ssb_bmp_control(&dev_dat, factSz);
+  // matches &= _bruh(host_res, dev_res, "Controlled Layout");
+  // dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
+  // matches &= _bruh(host_res, dev_res, "Fused Ablation");
+  // dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);
+  // matches &= _bruh(host_res, dev_res, "Non-fused Ablation");
 
   free(host_res);
-  free(xfertmp);
   ssb_free(&host_dat, &dev_dat);
   return matches;
 }

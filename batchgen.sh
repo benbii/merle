@@ -15,14 +15,14 @@ for skew in 04 08 12 16 20; do
   max_dimval=$((nr_elem / 100))
   o="synth/${1}zfcols/${skew}_16"
   # Generate attribute columns
-  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 65536 "$nr_elem" "$o/a1" &
-  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 65536 "$nr_elem" "$o/a2" &
+  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 65535 "$nr_elem" "$o/a1" &
+  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 65535 "$nr_elem" "$o/a2" &
   # Generate foreign keys
   ionice -c 3 python synth/onegen_zipf.py "1.${skew}" "$max_dimval" "$nr_elem" "$o/fk" &
   # Repeat with 32b
   o="synth/${1}zfcols/${skew}_32"
-  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 4294967296 "$nr_elem" "$o/a1" &
-  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 4294967296 "$nr_elem" "$o/a2" &
+  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 4294967295 "$nr_elem" "$o/a1" &
+  ionice -c 3 python synth/onegen_zipf.py "1.${skew}" 4294967295 "$nr_elem" "$o/a2" &
   ionice -c 3 python synth/onegen_zipf.py "1.${skew}" "$max_dimval" "$nr_elem" "$o/fk" &
 done
 

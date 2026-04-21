@@ -168,13 +168,13 @@ void synth_ref(const struct synth_schema *dat, size_t factsz, uint64_t fa1low,
   }
 }
 
-static bool _bruh(const uint32_t* hostres, const uint32_t* xfertmp, int a) {
-  uint32_t devres[256];
-  cudaMemcpy(devres, xfertmp, 256 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+static bool _bruh(const uint32_t* hostres, const uint32_t* devres, const char* a) {
+  uint32_t xfer_tmp[256];
+  cudaMemcpy(xfer_tmp, devres, 256 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
   for (size_t j = 0; j < 256; ++j) {
-    if (hostres[j] != devres[j]) {
-      fprintf(stderr, "Mismatch at %zu, h=%u, d=%u, ty=%d\n",
-              j, hostres[j], devres[j], a);
+    if (hostres[j] != xfer_tmp[j]) {
+      exit(fprintf(stderr, "%s mismatch at %zu, h=%u, d=%u\n",
+              a, j, hostres[j], xfer_tmp[j]));
       return false;
     }
   }
@@ -183,70 +183,78 @@ static bool _bruh(const uint32_t* hostres, const uint32_t* xfertmp, int a) {
 
 bool synth_demoall(const char *synthDirname) {
   struct synth_schema host_dat, dev_dat;
-  const char* cases[] = {
-    "04_16", "04_32", "08_16", "08_32",
-    "12_16", "12_32", "16_16", "16_32", "20_16", "20_32",
-  };
-  const double skews[] = {1.04, 1.04, 1.08, 1.08, 1.12,
-                          1.12, 1.16, 1.16, 1.2,  1.2};
-  const double colsel[7] = {.02, .04, .06, .09, .12, .18, .25};
-  const double fulsel[7] = {1 / 512.0, 1 / 256.0, 1 / 128.0, 1 / 64.0,
-                            1 / 32.0,  1 / 16.0,  1 / 8.0};
+  struct synth_bmp bmp;
+  const char* cases[] = { "04_32", "08_32", "12_32", "16_32", "20_32" };
+  const double skews[] = {1.04, 1.08, 1.12, 1.16, 1.2};
+  // const char* cases[] = {
+  //   "04_16", "04_32", "08_16", "08_32",
+  //   "12_16", "12_32", "16_16", "16_32", "20_16", "20_32",
+  // };
+  // const double skews[] = {1.04, 1.04, 1.08, 1.08, 1.12,
+  //                         1.12, 1.16, 1.16, 1.2,  1.2};
   char case_dir[512];
 
-  puts("\n\nSeletiv\tMethod1\tMethod2");
-  // Method 1 vs. 2; skewness 1.04, selectivity 1/{128,64,32,16}
-  sprintf(case_dir, "%s/%s", synthDirname, cases[1]);
-  size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
-  double *win = window_zipf(skews[1], 1024, 60);
-  for (size_t i = 0; i < 7; ++i) {
-    uint64_t low = 0, hi = 60;
-    while (win[low] > colsel[i]) ++low, ++hi;
-    float2 times = synth_method(&dev_dat, factSz, low, hi, low, hi, low, hi);
-    printf("%.5f\t%.4f\t%.4f\n", fulsel[i], times.x, times.y);
-    fflush(stdout);
-  }
-  free(win);
-  synth_free(&host_dat, &dev_dat);
+  // puts("\n\nSeletiv\tMethod1\tMethod2");
+  // // Method 1 vs. 2; skewness 1.04, selectivity 1/{128,64,32,16}
+  // sprintf(case_dir, "%s/%s", synthDirname, cases[1]);
+  // size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
+  // double *win = window_zipf(skews[1], 1024, 60);
+  // for (size_t i = 0; i < 7; ++i) {
+  //   uint64_t low = 0, hi = 60;
+  //   while (win[low] > colsel[i]) ++low, ++hi;
+  //   float2 times = synth_method(&dev_dat, factSz, low, hi, low, hi, low, hi);
+  //   printf("%.5f\t%.4f\t%.4f\n", fulsel[i], times.x, times.y);
+  //   fflush(stdout);
+  // }
+  // free(win);
+  // synth_free(&host_dat, &dev_dat);
 
-  puts("\nSkew\tBitW\tSeletiv\tJoin\tPerfect\tManyOrs\tCandChk"
-       "\tPftStg1\tPftStg2\tPftStg3"
-       "\tOrsStg1\tOrsStg2\tOrsStg3"
-       "\tChkStg1\tChkStg2\tChkStg3\tWAH");
-  for (size_t i = 0; i < 10; ++i) {
+  uint32_t hostres[256], *devres = __cum(sizeof(uint32_t) * 1024);
+  printf("\n\nAligned\tSkew\tSelecti\tJoin\tOurs\tBfuse\tWAHPft");
+  for (size_t i = 0; i < 5; ++i) {
     // Construct directory path for this case
     sprintf(case_dir, "%s/%s", synthDirname, cases[i]);
-    factSz = synth_load(&host_dat, &dev_dat, case_dir);
-    win = window_zipf(skews[i], 1024, 60);
+    size_t factSz = synth_load(&host_dat, &dev_dat, case_dir);
+    synth_bmpcreate(factSz, &dev_dat, &bmp);
 
-    // Run on selectivity 1/{256,128,64,32,16,8}
-    for (size_t o = 1; o < 7; o++) {
-      // Find the first x at which [x, x+60) has prob <= sel
-      uint64_t low = 0, hi = 60;
-      while (win[low] > colsel[o]) ++low, ++hi;
-      printf("%.2f\t%s\t%.5f", skews[i], cases[i] + 3, fulsel[o]);
-
-      uint32_t hostres[256], *xfertmp = __cum(sizeof(hostres) + 8);
-      // No memset: synth_* functions do this
+    for (size_t o = 0; o < NBIN / 2 - 4; o++) {
+      // ALIGNED STARTS
       // Run join on host once and save result to hostres (no timing)
-      synth_ref(&host_dat, factSz, low, hi, low, hi, low, hi, hostres);
+      uint64_t low = bmp.fBound[o], hi = bmp.fBound[o + 4];
+      uint64_t dLow = bmp.dBound[o], dHi = bmp.dBound[o + 4];
+      synth_ref(&host_dat, factSz, low, hi, low, hi, dLow, dHi, hostres);
+      size_t nrSel = 0;
+      for (size_t x = 0; x < 256; ++x) nrSel += hostres[i];
+      // Join on device
+      const float j = synth_join(&dev_dat, factSz, low, hi, low, hi, dLow, dHi, devres);
+      printf("\n1\t%.2f\t%.4f\t%.4f", skews[i], 100.0 * nrSel / factSz, j);
+      _bruh(hostres, devres, "Join");
+      float4 foo = synth_bmpdemo(&dev_dat, &bmp, factSz, low, hi, low, hi,
+                                  dLow, dHi, devres);
+      _bruh(hostres, devres, "Ours");
+      _bruh(hostres, devres + 256, "BaseFuse");
+      printf("\t%.4f\t%.4f\t%.4f", foo.x, foo.y,
+             host_dat.bitwidth == 32
+                 ? synth_wah(&dev_dat, factSz, low, hi, low, hi, low, hi)
+                 : 99.9999); // WAH is indexing phase on perfect index only
 
-      for (int ty = -1; ty < 6; ++ty) {
-        float4 bruh =
-            synth_bmp(&dev_dat, factSz, low, hi, low, hi, low, hi, xfertmp, ty);
-        printf(ty >= 3 ? "\t%.4f\t%.4f\t%.4f" : "\t%.4f", bruh.x, bruh.y, bruh.z);
-        if (!_bruh(hostres, xfertmp, ty)) return false;
-      }
-
-      cudaFree(xfertmp);
-      if (host_dat.bitwidth == 32)
-        synth_wah(&dev_dat, factSz, low, hi, low, hi, low, hi);
-      else puts("\t0.0");
+      // UNALIGNED STARTS, uncomment for result verification (SLOW)
+      ++low, ++dLow, --hi, --dHi;
+      // synth_ref(&host_dat, factSz, low, hi, low, hi, dLow, dHi, hostres);
+      // nrSel = 0;
+      // for (size_t x = 0; x < 256; ++x) nrSel += hostres[i];
+      printf("\n0\t%.2f\t%.4f\t%.4f", skews[i], 100.0 * nrSel / factSz, j);
+      foo = synth_bmpdemo(&dev_dat, &bmp, factSz, low, hi, low, hi, dLow, dHi,
+                           devres);
+      // _bruh(hostres, devres, "Ours");
+      // _bruh(hostres, devres + 256, "BaseFuse");
+      printf("\t%.4f\t%.4f\t%.4f", foo.x, foo.y, 99.9999);
       fflush(stdout);
     }
 
-    free(win);
+    synth_bmpfree(&bmp);
     synth_free(&host_dat, &dev_dat);
   }
+  cudaFree(devres);
   return true;
 }
