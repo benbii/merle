@@ -3,7 +3,6 @@
 #include <cstdlib>
 using namespace mybmpidx;
 using cuda::ceil_div;
-static constexpr auto nodim = recipe::nodim;
 
 static __device__ uint2 _op(uint i, synth_schema dat, uint64_t fa1low,
                             uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi,
@@ -159,8 +158,9 @@ float4 synth_bmpdemo(const synth_schema *dat, struct synth_bmp *bmp,
   return foo;
 }
 
-float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
+/* float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
     uint fa1hi, uint fa2lo, uint fa2hi, uint da1lo, uint da1hi) {
+  static constexpr auto nodim = recipe::nodim;
   float2 ret = {0.0f, 0.0f};
   cudaEvent_t start, stop;
   cudaEventCreate(&start); cudaEventCreate(&stop);
@@ -208,4 +208,4 @@ float2 synth_method(const synth_schema *dat, uint factsz, uint fa1lo,
   p.release();
   cudaEventDestroy(start); cudaEventDestroy(stop);
   return ret;
-}
+} */

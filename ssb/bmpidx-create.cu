@@ -3,7 +3,6 @@
 #include "ssbdemo.h"
 #include "../primitive.cuh"
 #include "../merle/wahGpu.cuh"
-#include <cuda_runtime_api.h>
 using namespace mybmpidx;
 
 const uint64_t dateSpBin[8] = {

@@ -185,89 +185,25 @@ __global__ void method2(vprg data, uint *__restrict__ out, uint nr_grp, op_t op)
       atomicAdd(out + i, shared.cta_grp[i]);
 }
 
-// An AND query between several columns
-struct ands {
-  col col_bmps[MAXCOLS];
-  uint factsz = 0;
-  void release() noexcept {
-    for (size_t i = 0; i < MAXCOLS; ++i)
-      col_bmps[i].release();
-  }
-
-  __device__ uint2 nochk(uint idxword_pos) const {
-    uint idxword = 0xffffffff; // start from all 1, AND each column
-    #pragma unroll
-    for (uint c = 0; c < MAXCOLS; ++c) {
-      uint *const *middle = this->col_bmps[c].middle;
-      if (middle[0] == nullptr)
-        break; // No more columns! `idxword` is the final result!
-
-      // OR all bins in this column
-      uint thecol = __ldcs(&middle[0][idxword_pos]);
-      #pragma unroll
-      for (uint b = 1; b < MAXBIN_PERCOL; ++b) {
-        if (middle[b] == nullptr)
-          break; // No more bins in this column
-        thecol |= __ldcs(&middle[b][idxword_pos]);
-        // all 1 is basically nonexistent so no early bailout
-      }
-      idxword &= thecol;
-      if (idxword == 0)
-        break; // Early bailout; 0 is quite frequent
-    }
-    return make_uint2(idxword, 0);
-  }
-
-  __device__ uint2 chk(uint idxword_pos) const {
-    uint possible = 0xffffffff, uncertain = 0;
-    #pragma unroll
-    for (uint c = 0; c < MAXCOLS; ++c) {
-      uint *const *middle = col_bmps[c].middle;
-      const uint* le = col_bmps[c].leftmost, *ri = col_bmps[c].rightmost;
-      if (middle[0] == nullptr && le == nullptr && ri == nullptr)
-        break; // No more columns!
-
-      uint p_cur = 0;
-      #pragma unroll
-      for (uint b = 0; b < MAXBIN_PERCOL; ++b) {
-        if (middle[b] == nullptr)
-          break; // No more bins in this column
-        p_cur |= __ldcs(&middle[b][idxword_pos]);
-        // all 1 is basically nonexistent so no early bailout
-      }
-      uint u_cur = (le ? __ldcs(&le[idxword_pos]) : 0) |
-                   (ri ? __ldcs(&ri[idxword_pos]) : 0);
-      p_cur |= u_cur;
-      possible &= p_cur;
-      uncertain = (uncertain | u_cur) & possible;
-      if (possible == 0)
-        break; // Early bailout; 0 is quite frequent
-    }
-    return make_uint2(possible, uncertain);
-  }
-};
-
-template <int nt, int vt, int vt0, bool chk, typename op_t>
-__global__ void
-noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
+template <int nt, int vt, int vt0, bool chk, typename iop_t, typename jop_t>
+__global__ void hardcoded(uint *__restrict__ out, uint nr_grp, iop_t iop,
+                          jop_t jop) {
   static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
-  static_assert(vt0 < 32, "must have <32 vt");
+  static_assert(vt0 < 32, "must have <32 vt0");
   __shared__ union {
     typename cub::BlockScan<uint, nt>::TempStorage scan_temp;
     uint onelist[nt * vt0];
-    uint cta_grp[2048]; // assuming nr_grp <= 2048
+    uint cta_grp[0]; // expand with dyn shmem lol
   } shared;
 
   uint2 idxwords[vt];
   const uint base = blockIdx.x * (nt * vt);
   #pragma unroll
-  for (uint k = 0; k < vt; ++k) {
-    const uint idxword_pos = base + threadIdx.x + k * nt;
-    idxwords[k] = idxword_pos < cuda::ceil_div(data.factsz, 32)
-                      ? (chk ? data.chk(idxword_pos) : data.nochk(idxword_pos))
-                      : make_uint2(0, 0);
-  }
+  for (uint k = 0; k < vt; ++k)
+    idxwords[k] = iop(threadIdx.x + k * nt + base);
+  __syncthreads();
 
+  // unchecked method 2 cause why not in a "hardcoded" workflow
   uint my_off, tot_1, idxword_popc = 0;
   #pragma unroll
   for (uint k = 0; k < vt; ++k)
@@ -275,7 +211,6 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
   cub::BlockScan<uint, nt>(shared.scan_temp)
     .ExclusiveSum(idxword_popc, my_off, tot_1);
   __syncthreads();
-
   #pragma unroll
   for (uint k = 0; k < vt; ++k) {
     while (idxwords[k].x != 0) {
@@ -288,10 +223,10 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
         shared.onelist[my_off++] = row_id;
       idxwords[k].x &= idxwords[k].x - 1;
     }
-  } // `idxwords` retire here
+  }
   __syncthreads();
 
-  // All threads refer to `vt` values in the onelist
+  // the rest are identical to standard ones
   uint my_1[vt0];
   #pragma unroll
   for (uint i = 0, j = threadIdx.x; i < vt0; j += nt, i += 1) {
@@ -300,7 +235,6 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
   }
   __syncthreads();
 
-  // 1 values now in registers. Do actual group-by now.
   for (uint i = threadIdx.x; i < nr_grp; i += nt)
     shared.cta_grp[i] = 0;
   __syncthreads();
@@ -308,7 +242,7 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
   for (uint i = 0, j = threadIdx.x; i < vt0; j += nt, i += 1) {
     if (j >= tot_1) break;
     auto [val, grpidx] =
-        op(my_1[i] & 0x7fffffff, chk ? bool(my_1[i] & 0x80000000) : false);
+        jop(my_1[i] & 0x7fffffff, chk ? bool(my_1[i] & 0x80000000) : false);
     if (grpidx >= nr_grp) continue;
     unsigned peers = __match_any_sync(__activemask(), grpidx);
     val = __reduce_add_sync(peers, val);
@@ -317,7 +251,6 @@ noprg_abla(ands data, uint *__restrict__ out, uint nr_grp, op_t op) {
   }
   __syncthreads();
 
-  // put value back into global memory
   for (uint i = threadIdx.x; i < nr_grp; i += nt)
     if (shared.cta_grp[i] != 0)
       atomicAdd(out + i, shared.cta_grp[i]);
@@ -455,65 +388,6 @@ __global__ void _stg3(const uint *__restrict__ onelist, uint sz,
     const uint x = cta_grp[i];
     if (x) atomicAdd(out + i, x);
   }
-}
-
-template <int nt, int vt1, int vt2, int vt3, bool chk, typename Op>
-float4 nofuse_abla(const vprg &data, uint nr_grp, Op op, uint *d_grpout,
-                   uint *d_possi, uint *d_uncert, uint *d_onelist,
-                   uint *d_idxbuf = nullptr, cudaStream_t stream = 0) {
-  const uint factsz = data.factsz, nwords = (factsz + 31u) >> 5;
-  uint *d_count = &d_grpout[nr_grp];
-  cudaError_t err;
-  float4 bruh = {0.0, 0.0, 0.0, 999.99};
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start); cudaEventCreate(&stop);
-
-  // Index access
-  cudaEventRecord(start, stream);
-  err = cudaMemsetAsync(d_grpout, 0, sizeof(uint) * (1 + nr_grp), stream);
-  if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
-  // for (size_t i = 0; i < 100; ++i) {
-    _stg1<nt, vt1, chk><<<cuda::ceil_div(nwords, nt * vt1), nt, 0, stream>>>(
-      data, d_possi, d_uncert, d_idxbuf);
-    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
-  // }
-  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&bruh.x, start, stop);
-  // printf("\t%.4f", bruh / 100);
-
-  // Collect set bits
-  cudaEventRecord(start, stream);
-  // for (size_t i = 0; i < 100; ++i) {
-    err = cudaMemsetAsync(d_count, 0, sizeof(uint), stream);
-    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
-    _stg2<nt, vt2, chk><<<cuda::ceil_div(nwords, nt * vt2), nt, 0, stream>>>(
-      d_possi, factsz, d_count, d_onelist, d_uncert);
-    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
-  // }
-  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&bruh.y, start, stop);
-  // printf("\t%.4f", bruh / 100);
-
-  // Do query
-  uint h_count;
-  cudaEventRecord(start, stream);
-  // for (size_t i = 0; i < 100; ++i) {
-    err = cudaMemcpyAsync(&h_count, d_count, sizeof(uint),
-                          cudaMemcpyDeviceToHost, stream);
-    if (err != cudaSuccess) return bruh;
-    err = cudaMemsetAsync(d_grpout, 0, sizeof(uint) * nr_grp, stream);
-    if (err != cudaSuccess) return bruh;
-    _stg3<nt, vt3, chk>
-        <<<cuda::ceil_div(h_count, nt * vt3), nt, nr_grp * sizeof(uint),
-           stream>>>(d_onelist, h_count, d_grpout, nr_grp, op);
-  // }
-  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&bruh.z, start, stop);
-  // printf("\t%.4f", bruh / 100);
-
-  cudaEventDestroy(start); cudaEventDestroy(stop);
-  bruh.w = bruh.x + bruh.y + bruh.z;
-  return bruh;
 }
 
 } // namespace abla

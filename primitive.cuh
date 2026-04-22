@@ -444,39 +444,6 @@ vprg_grpby(vprg data, uint *__restrict__ out, uint nr_grp, op_t op) {
       atomicAdd(out + i, shared.cta_grp[i]);
 }
 
-// Helper type to create a bitmap index for a specific query
-struct recipe {
-  uint factsz; // size of fact table
-  // arguments to create_join or select (if corresponding foreign key is NULL)
-  uint nbit[MAXCOLS], min[MAXCOLS], max[MAXCOLS], dimsz[MAXCOLS];
-  uint32_t* fk[MAXCOLS];
-  void* attr[MAXCOLS];
-  static constexpr uint nodim = 0xffffffff;
-
-  // Perfect: all bitmaps index bin boundary "perfectly align" with query. If
-  // the query is 3<=attr1<11 AND 4<=attr2<13, then we create the 2 exact bitmaps:
-  // col_bmps[0].middle[0] = create_select(..., 3, 11)
-  // col_bmps[1].middle[0] = create_select(..., 4, 13)
-  // all other fields are NULL.
-  vprg perfect(const vprg::instr instrs[MAXNINSTR]) const;
-
-  // ManyOr: the query includes 3 bins, but the lower bound of
-  // leftmost bin and upper bound of rightmost bin align with the query. If max
-  // - min is not divisible by 3 then remainder goes to final bin. If max - min
-  // < 3, then fall back to "perfect" creation.
-  // Ex: query 3<=attr1<11, bins are {3,4}, {5,6}, {7,8,9,10}.
-  vprg many_or(const vprg::instr instrs[MAXNINSTR]) const;
-
-  // CandChk: bin boundaries must be a multiple of the given interval. Place the
-  // bin into leftmost or rightmost if the bin is not fully included in the bin.
-  // For now if >MAXBIN_PERCOL middle bins, only keep the first MAXBIN_PERCOL.
-  vprg candchk(const vprg::instr instrs[MAXNINSTR]) const;
-
-  // Only used in adapting operation between compressed bit vectors
-  vprg _cmprs_adapt_perfect(const vprg::instr instrs[MAXNINSTR]) const;
-  vprg _cmprs_adapt_manyor(const vprg::instr instrs[MAXNINSTR]) const;
-};
-
 } // namespace mybmpidx
 #ifdef __CLANG__CUDA_MATH_FORWARD_DECLARES_H__
 #undef __ldcs

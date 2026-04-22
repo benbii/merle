@@ -337,8 +337,11 @@ bool ssb_demoall(const char *ssbDirname) {
   ssb_bmpfree(&bmp);
   cudaFree(dev_res);
 
-  // dev_res = ssb_bmp_control(&dev_dat, factSz);
-  // matches &= _bruh(host_res, dev_res, "Controlled Layout");
+  dev_res = ssb_bmp_control(&dev_dat, factSz);
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL, "Our controlled-layout");
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 2, "Controlled base fusion");
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 3, "COntrolled no fusion");
+  cudaFree(dev_res);
   // dev_res = ssb_bmp_control_abl_fuse(&dev_dat, factSz);
   // matches &= _bruh(host_res, dev_res, "Fused Ablation");
   // dev_res = ssb_bmp_control_abl_nofuse(&dev_dat, factSz);

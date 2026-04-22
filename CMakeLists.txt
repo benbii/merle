@@ -24,8 +24,8 @@ find_package(OpenMP REQUIRED)
 add_executable(mydemo
     main.c bmpidx_create.cu
     ssb/cpuref.c ssb/controlled-demo.cu
-    ssb/controlled-abla-nofuse.cu ssb/controlled-abla-fuse.cu
     ssb/fixedlayout.cu ssb/bmpidx-create.cu ssb/wah-demo.cu
+    ssb/inst/1.cu ssb/inst/2.cu ssb/inst/3.cu ssb/inst/4.cu
     synth/cpuref.c synth/bmpidx-create.cu synth/synthdemo.cu synth/wah_roast.cu
     merle/wahGpuCmprs.cu merle/wahGpuDirect.cu
 )
@@ -46,4 +46,3 @@ target_compile_options(mydemo PUBLIC
   $<$<COMPILE_LANGUAGE:CXX>:${C_FLAGS}>
   $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_FLAGS}>
 )
-
