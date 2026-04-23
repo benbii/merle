@@ -26,6 +26,7 @@ add_executable(mydemo
     ssb/cpuref.c ssb/controlled-demo.cu
     ssb/fixedlayout.cu ssb/bmpidx-create.cu ssb/wah-demo.cu
     ssb/inst/1.cu ssb/inst/2.cu ssb/inst/3.cu ssb/inst/4.cu
+    ssb/inst/1c.cu ssb/inst/2c.cu ssb/inst/3c.cu ssb/inst/4c.cu
     synth/cpuref.c synth/bmpidx-create.cu synth/synthdemo.cu synth/wah_roast.cu
     merle/wahGpuCmprs.cu merle/wahGpuDirect.cu
 )

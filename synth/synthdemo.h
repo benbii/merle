@@ -42,10 +42,12 @@ float synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
 
 bool synth_demoall(const char *synthDirname);
 
-#define NBIN 32
+#define PART1 32
+#define PART2 16
+#define NBIN PART1 + PART2 - 1
 struct synth_bmp {
-  uint32_t* f1[NBIN / 2], *f2[NBIN / 2], *d1[NBIN / 2];
-  uint64_t fBound[NBIN / 2 + 1], dBound[NBIN / 2 + 1];
+  uint32_t* f1[NBIN], *f2[NBIN], *d1[NBIN];
+  uint64_t fBound[PART1 + PART2], dBound[PART1 + PART2];
 };
 void synth_bmpcreate(size_t factSz, const struct synth_schema *dat,
                      struct synth_bmp *devOut);

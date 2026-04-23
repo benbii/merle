@@ -271,30 +271,30 @@ void s34s(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s41s(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s42s(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s43s(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s11d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s12d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s13d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s21d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s22d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s23d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s31d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s32d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s33d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s34d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-// void s41d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s42d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s43d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s11m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s12m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s13m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s21m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s22m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s23m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s31m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+// s31m reuses s31s
 void s32m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s33m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 void s34m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-// void s41m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
-void s42m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+// s41m reuses s41s
+// s42m reuses s42s
 void s43m(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+// s11d reuses s11m
+void s12d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+void s13d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+// s21d reuses s21m
+// s22d reuses s22m
+// s23d reuses s23m
+// s31d reuses s31s
+void s32d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+void s33d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+void s34d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
+// s41d reuses s41s
+// s42d reuses s42s
+void s43d(const ssb_schema *dat, ssb_bmp *b, size_t factsz, uint *grp_out);
 }

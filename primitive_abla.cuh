@@ -186,21 +186,24 @@ __global__ void method2(vprg data, uint *__restrict__ out, uint nr_grp, op_t op)
 }
 
 template <int nt, int vt, int vt0, bool chk, typename iop_t, typename jop_t>
-__global__ void hardcoded(uint *__restrict__ out, uint nr_grp, iop_t iop,
-                          jop_t jop) {
+__global__ void hardcoded(uint factsz, uint *__restrict__ out, uint nr_grp,
+                          iop_t iop, jop_t jop) {
   static_assert(nt % 32 == 0, "must have thrd count a multiple of 32");
   static_assert(vt0 < 32, "must have <32 vt0");
   __shared__ union {
     typename cub::BlockScan<uint, nt>::TempStorage scan_temp;
     uint onelist[nt * vt0];
-    uint cta_grp[0]; // expand with dyn shmem lol
+    uint cta_grp[800]; // expand with dyn shmem lol
   } shared;
 
   uint2 idxwords[vt];
   const uint base = blockIdx.x * (nt * vt);
+  const uint nwords = cuda::ceil_div(factsz, 32u);
   #pragma unroll
-  for (uint k = 0; k < vt; ++k)
-    idxwords[k] = iop(threadIdx.x + k * nt + base);
+  for (uint k = 0; k < vt; ++k) {
+    const uint idxword_pos = threadIdx.x + k * nt + base;
+    idxwords[k] = idxword_pos < nwords ? iop(idxword_pos) : make_uint2(0, 0);
+  }
   __syncthreads();
 
   // unchecked method 2 cause why not in a "hardcoded" workflow

@@ -334,6 +334,7 @@ bool ssb_demoall(const char *ssbDirname) {
   matches &= _bruh(host_res, dev_res + SUMGRP_ALL, "Our fixed-layout");
   matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 2, "Base fusion");
   matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 3, "No fusion");
+  matches &= _bruh(host_res, dev_res + SUMGRP_ALL * 4, "Dedicated");
   ssb_bmpfree(&bmp);
   cudaFree(dev_res);
 
