@@ -393,6 +393,65 @@ __global__ void _stg3(const uint *__restrict__ onelist, uint sz,
   }
 }
 
+template <int nt, int vt1, int vt2, int vt3, bool chk, typename Op>
+float4 nofuse_abla(const vprg &data, uint nr_grp, Op op, uint *d_grpout,
+                   uint *d_possi, uint *d_uncert, uint *d_onelist,
+                   uint *d_idxbuf = nullptr, cudaStream_t stream = 0) {
+  const uint factsz = data.factsz, nwords = (factsz + 31u) >> 5;
+  uint *d_count = &d_grpout[nr_grp];
+  cudaError_t err;
+  float4 bruh = {0.0, 0.0, 0.0, 999.99};
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start); cudaEventCreate(&stop);
+
+  // Index access
+  cudaEventRecord(start, stream);
+  err = cudaMemsetAsync(d_grpout, 0, sizeof(uint) * (1 + nr_grp), stream);
+  if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
+  // for (size_t i = 0; i < 100; ++i) {
+    _stg1<nt, vt1, chk><<<cuda::ceil_div(nwords, nt * vt1), nt, 0, stream>>>(
+      data, d_possi, d_uncert, d_idxbuf);
+    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
+  // }
+  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&bruh.x, start, stop);
+  // printf("\t%.4f", bruh / 100);
+
+  // Collect set bits
+  cudaEventRecord(start, stream);
+  // for (size_t i = 0; i < 100; ++i) {
+    err = cudaMemsetAsync(d_count, 0, sizeof(uint), stream);
+    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
+    _stg2<nt, vt2, chk><<<cuda::ceil_div(nwords, nt * vt2), nt, 0, stream>>>(
+      d_possi, factsz, d_count, d_onelist, d_uncert);
+    if ((err = cudaGetLastError()) != cudaSuccess) return bruh;
+  // }
+  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&bruh.y, start, stop);
+  // printf("\t%.4f", bruh / 100);
+
+  // Do query
+  uint h_count;
+  cudaEventRecord(start, stream);
+  // for (size_t i = 0; i < 100; ++i) {
+    err = cudaMemcpyAsync(&h_count, d_count, sizeof(uint),
+                          cudaMemcpyDeviceToHost, stream);
+    if (err != cudaSuccess) return bruh;
+    err = cudaMemsetAsync(d_grpout, 0, sizeof(uint) * nr_grp, stream);
+    if (err != cudaSuccess) return bruh;
+    _stg3<nt, vt3, chk>
+        <<<cuda::ceil_div(h_count, nt * vt3), nt, nr_grp * sizeof(uint),
+           stream>>>(d_onelist, h_count, d_grpout, nr_grp, op);
+  // }
+  cudaEventRecord(stop, stream); cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&bruh.z, start, stop);
+  // printf("\t%.4f", bruh / 100);
+
+  cudaEventDestroy(start); cudaEventDestroy(stop);
+  bruh.w = bruh.x + bruh.y + bruh.z;
+  return bruh;
+}
+
 } // namespace abla
 } // namespace mybmpidx
 //

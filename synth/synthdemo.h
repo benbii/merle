@@ -29,33 +29,30 @@ void synth_free(struct synth_schema* host, struct synth_schema* dev);
 void synth_ref(const struct synth_schema *host, size_t factsz, uint64_t fa1low,
                uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi, uint64_t da1low,
                uint64_t da1hi, uint32_t grpout[256]);
-float synth_join(const struct synth_schema *dev, size_t factsz, uint64_t fa1low,
+void synth_join(const struct synth_schema *dev, size_t factsz, uint64_t fa1low,
                uint64_t fa1hi, uint64_t fa2low, uint64_t fa2hi, uint64_t da1low,
                uint64_t da1hi, uint32_t grpout[256]);
+float4 synth_bmp(const struct synth_schema *dat, uint32_t factsz,
+                 uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi,
+                 uint32_t da1lo, uint32_t da1hi, uint32_t grpout[256], int ty);
 float2 synth_method(const struct synth_schema *dat, uint32_t factsz,
                     uint32_t fa1lo, uint32_t fa1hi, uint32_t fa2lo,
                     uint32_t fa2hi, uint32_t da1lo, uint32_t da1hi);
-float synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
+void synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
                uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
                uint32_t da1hi);
 
 
 bool synth_demoall(const char *synthDirname);
 
-#define PART1 32
-#define PART2 16
-#define NBIN PART1 + PART2 - 1
-struct synth_bmp {
-  uint32_t* f1[NBIN], *f2[NBIN], *d1[NBIN];
-  uint64_t fBound[PART1 + PART2], dBound[PART1 + PART2];
-};
-void synth_bmpcreate(size_t factSz, const struct synth_schema *dat,
-                     struct synth_bmp *devOut);
-void synth_bmpfree(struct synth_bmp *dev);
-float4 synth_bmpdemo(const struct synth_schema *dat, struct synth_bmp *bmp,
-                     uint32_t factsz, uint32_t fa1lo, uint32_t fa1hi,
-                     uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
-                     uint32_t da1hi, uint32_t grpout[]);
+/**
+ * Calculate window probabilities for Zipf distribution
+ * @param skewness The skewness parameter for Zipf distribution
+ * @param n The number of windows to calculate
+ * @param winsize The size of each window
+ * @return Array of probabilities for windows [x, x+winsize) where x in [0, n)
+ */
+double *window_zipf(double skewness, size_t n, size_t winsize);
 
 #ifdef __cplusplus
 } /* extern "C" */

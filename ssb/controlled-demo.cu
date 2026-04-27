@@ -1,125 +1,7 @@
 #include "lambdas.cuh"
 using namespace mybmpidx;
-static constexpr auto nodim = 0xffffffff;
 static constexpr auto ANDM = vprg::ANDM, LOAD = vprg::ORM, END = vprg::END;
-
-// Helper type to create a bitmap index for a specific query
-struct recipe {
-  uint factsz; // size of fact table
-  // arguments to create_join or select (if corresponding foreign key is NULL)
-  uint nbit[MAXCOLS], min[MAXCOLS], max[MAXCOLS], dimsz[MAXCOLS];
-  uint32_t* fk[MAXCOLS];
-  void* attr[MAXCOLS];
-
-  // Perfect: all bitmaps index bin boundary "perfectly align" with query. If
-  // the query is 3<=attr1<11 AND 4<=attr2<13, then we create the 2 exact bitmaps:
-  // col_bmps[0].middle[0] = create_select(..., 3, 11)
-  // col_bmps[1].middle[0] = create_select(..., 4, 13)
-  // all other fields are NULL.
-  vprg perfect(const vprg::instr instrs[MAXNINSTR]) const;
-
-  // aligned: the query includes 3 bins, but the lower bound of
-  // leftmost bin and upper bound of rightmost bin align with the query. If max
-  // - min is not divisible by 3 then remainder goes to final bin. If max - min
-  // < 3, then fall back to "perfect" creation.
-  // Ex: query 3<=attr1<11, bins are {3,4}, {5,6}, {7,8,9,10}.
-  vprg aligned(const vprg::instr instrs[MAXNINSTR]) const;
-
-  // misaligned: bin boundaries must be a multiple of the given interval. Place
-  // the bin into leftmost or rightmost if the bin is not fully included in the
-  // bin. For now if >MAXBIN_PERCOL middle bins, only keep the first MAXBIN_PERCOL.
-  vprg misaligned(const vprg::instr instrs[MAXNINSTR]) const;
-};
-
-vprg recipe::perfect(const vprg::instr *instrs) const {
-  vprg ret;
-  ret.factsz = factsz;
-  memcpy(ret.instrs, instrs, sizeof(vprg::instr) * MAXNINSTR);
-  ret.factsz = factsz;
-  for (size_t i = 0; i < MAXCOLS; ++i) {
-    if (attr[i] == NULL) continue;
-    ret.cols[i].middle[0] =
-        create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
-  }
-  return ret;
-}
-
-vprg recipe::aligned(const vprg::instr *instrs) const {
-  vprg ret;
-  ret.factsz = factsz;
-  memcpy(ret.instrs, instrs, sizeof(vprg::instr) * MAXNINSTR);
-  ret.factsz = factsz;
-  for (size_t i = 0; i < MAXCOLS; ++i) {
-    if (attr[i] == NULL) continue;
-    uint step = (max[i] - min[i]) / 3, **middle = ret.cols[i].middle;
-    if (step == 0) {
-      middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
-      continue;
-    }
-
-    middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i],
-                            min[i] + step);
-    middle[1] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i],
-                            min[i] + step, min[i] + 2 * step);
-    middle[2] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i],
-                            min[i] + 2 * step, max[i]);
-  }
-  return ret;
-}
-
-vprg recipe::misaligned(const vprg::instr *instrs) const {
-  vprg ret;
-  ret.factsz = factsz;
-  memcpy(ret.instrs, instrs, sizeof(vprg::instr) * MAXNINSTR);
-  // column 0 - left bin left range -= step / 2
-  if (attr[0] == nullptr) return ret;
-  uint step = (max[0] - min[0]) / 3, **middle = ret.cols[0].middle;
-  if (step == 0)
-    ret.cols[0].leftmost = create_join(fk[0], attr[0], nbit[0], factsz,
-                                           dimsz[0], min[0], max[0] + 1);
-  else {
-    auto l = std::max(min[0], step / 2) - step / 2;
-    ret.cols[0].leftmost =
-      create_join(fk[0], attr[0], nbit[0], factsz, dimsz[0], l, min[0] + step);
-    middle[0] = create_join(fk[0], attr[0], nbit[0], factsz, dimsz[0],
-                            min[0] + step, min[0] + 2 * step);
-    middle[1] = create_join(fk[0], attr[0], nbit[0], factsz, dimsz[0],
-                            min[0] + 2 * step, max[0]);
-  }
-
-  // column 1 - right bin right range += step / 2
-  if (attr[1] == nullptr) return ret;
-  step = (max[1] - min[1]) / 3, middle = ret.cols[1].middle;
-  if (step == 0)
-    ret.cols[1].rightmost = create_join(fk[1], attr[1], nbit[1], factsz,
-                                            dimsz[1], min[1] - 1, max[1]);
-  else {
-    ret.cols[1].rightmost =
-      create_join(fk[1], attr[1], nbit[1], factsz, dimsz[1], min[1] + 2 * step,
-                  max[1] + step / 2);
-    middle[0] = create_join(fk[1], attr[1], nbit[1], factsz, dimsz[1],
-                            min[1], min[1] + 1 * step);
-    middle[1] = create_join(fk[1], attr[1], nbit[1], factsz, dimsz[1],
-                            min[1] + step, min[1] + 2 * step);
-  }
-
-  // rest columns same as many or
-  for (size_t i = 2; i < MAXCOLS; ++i) {
-    if (attr[i] == NULL) return ret;
-    uint step = (max[i] - min[i]) / 3, **middle = ret.cols[i].middle;
-    if (step == 0) {
-      middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i], max[i]);
-      continue;
-    }
-    middle[0] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i], min[i],
-                            min[i] + step);
-    middle[1] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i],
-                            min[i] + step, min[i] + 2 * step);
-    middle[2] = create_join(fk[i], attr[i], nbit[i], factsz, dimsz[i],
-                            min[i] + 2 * step, max[i]);
-  }
-  return ret;
-}
+constexpr auto nodim = recipe::nodim;
 
 template <typename op_t>
 void MOREWORK(const char *a, recipe &r, uint32_t *grp_out, size_t nr_grp,
@@ -127,10 +9,10 @@ void MOREWORK(const char *a, recipe &r, uint32_t *grp_out, size_t nr_grp,
   vprg p = r.perfect(instrs);
   DOWORK(a, "Perfect", p, grp_out, nr_grp, op, factsz);
   p.release();
-  p = r.aligned(instrs);
+  p = r.many_or(instrs);
   DOWORK(a, "AllAlig", p, grp_out, nr_grp, op, factsz);
   p.release();
-  p = r.misaligned(instrs);
+  p = r.candchk(instrs);
   DOWORK(a, "MisAlig", p, grp_out, nr_grp, op, factsz);
   p.release();
 }

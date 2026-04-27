@@ -4,16 +4,7 @@ project(mydemo LANGUAGES C CXX CUDA)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
-
-# Option for datacenter GPUs with large shared memory (e.g., A100, H100)
-option(LARGE_SMEM "Build for datacenter GPUs with large shared memory (sm_90)" OFF)
-
-if(LARGE_SMEM)
-  set(CMAKE_CUDA_ARCHITECTURES 100 90 80)
-  add_compile_definitions(LARGE_SMEM)
-else()
-  set(CMAKE_CUDA_ARCHITECTURES 86 89 120)
-endif()
+set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90 120)
 
 # Find required packages
 find_package(CUDAToolkit REQUIRED)
@@ -27,7 +18,7 @@ add_executable(mydemo
     ssb/fixedlayout.cu ssb/bmpidx-create.cu ssb/wah-demo.cu
     ssb/inst/1.cu ssb/inst/2.cu ssb/inst/3.cu ssb/inst/4.cu
     ssb/inst/1c.cu ssb/inst/2c.cu ssb/inst/3c.cu ssb/inst/4c.cu
-    synth/cpuref.c synth/bmpidx-create.cu synth/synthdemo.cu synth/wah_roast.cu
+    synth/cpuref.c synth/synthdemo.cu synth/wah_roast.cu synth/window_zipf.c
     merle/wahGpuCmprs.cu merle/wahGpuDirect.cu
 )
 # Link libraries

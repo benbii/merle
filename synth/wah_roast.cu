@@ -2,10 +2,10 @@
 #include "synthdemo.h"
 static constexpr size_t ndup = 100;
 
-float synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
-                uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
-                uint32_t da1hi) {
-  dumb_pool_t ctx(2ull << 30, false);
+void synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
+               uint32_t fa1hi, uint32_t fa2lo, uint32_t fa2hi, uint32_t da1lo,
+               uint32_t da1hi) {
+  dumb_pool_t ctx(4ull << 30, false);
   auto b1f = dbjoinFlatWah((uint32_t *)dat->factattr1, factsz, nullptr, nullptr,
                           fa1lo, fa1hi, ctx);
   auto b2f = dbjoinFlatWah((uint32_t *)dat->factattr2, factsz, nullptr, nullptr,
@@ -32,5 +32,5 @@ float synth_wah(const struct synth_schema *dat, uint32_t factsz, uint32_t fa1lo,
   cudaEventRecord(stop); cudaEventSynchronize(stop);
   float totalTime; cudaEventElapsedTime(&totalTime, start, stop);
   cudaEventDestroy(start); cudaEventDestroy(stop);
-  return totalTime / ndup;
+  printf("\t%.4f\n", totalTime / ndup);
 }
