@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-if ! which cmake ninja clang ionice; then
+if ! which cmake ninja ionice; then
   exit 2
 fi
 if [ $# -ne 1 ]; then
@@ -28,7 +28,7 @@ done
 
 cmake -S. -Bbuild -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ninja -C build
-clang ssb-dbgen-lite.c -O3 -march=native -o build/dbgen-lite -lm -fopenmp
+cc ssb-dbgen-lite.c -O3 -march=native -o build/dbgen-lite -lm -fopenmp
 if [ "$1" -eq 20 ]; then
   #bash rtscan/script/run.sh &
   make -C crystal/test/ssb/loader -j32
