@@ -137,18 +137,16 @@ ax.bar(positions[4], fused, width, color=c_idx_unaligned)
 ax.annotate('Unaligned\nbins not\nsupported\npreviously', xy=(positions[0]+0.22, 0.05),
             fontsize=8, ha='left', va='bottom', style='italic', color='#444444')
 
-pct1 = (wah_total / vqp_total - 1) * 100
-pct2 = (vqp_total / fused - 1) * 100
 ax.annotate('', xy=(positions[1]-0.1, vqp_total+0.02),
             xytext=(positions[0]+0.25, wah_total-0.02),
             arrowprops=dict(arrowstyle='->', color='#9467bd', lw=1.8))
-ax.text((positions[0]+positions[1])/2-0.1, (wah_total+vqp_total)/3,
-        f'{pct1:.0f}\\%\nFaster', fontsize=10, color='#d62728', ha='center', fontweight='bold')
+ax.text((positions[0]+positions[1])/2, (wah_total+vqp_total)/3+0.1,
+        f'${wah_total / vqp_total:.2f}\\times$', fontsize=10, color='#d62728', ha='center', fontweight='bold')
 ax.annotate('', xy=(positions[4]-0.2, fused),
             xytext=(positions[2]+0.2, vqp_total-0.02),
             arrowprops=dict(arrowstyle='->', color='#9467bd', lw=1.8))
 ax.text((positions[2]+positions[4])/2, (vqp_total+fused)/3,
-        f'{pct2:.0f}\\%\nFaster', fontsize=10, color='#d62728', ha='center', fontweight='bold')
+        f'${vqp_total / fused:.2f}\\times$', fontsize=10, color='#d62728', ha='center', fontweight='bold')
 
 ax.set_ylabel(f'SF {sf} SSB Q3.2 (ms)', fontsize=11)
 ax.set_xticks([positions[0], (positions[1]+positions[2])/2, (positions[3]+positions[4])/2])
@@ -159,7 +157,6 @@ plt.tight_layout()
 plt.savefig(f'fig_teaser_sf{sf}.pdf', bbox_inches='tight')
 plt.savefig(f'fig_teaser_sf{sf}.png', bbox_inches='tight', dpi=150)
 print(f"Saved fig_teaser_sf{sf}.pdf/png")
-print(f"Teaser: WAH->VQP={pct1:.0f}% faster, VQP->Fused={pct2:.0f}% faster")
 
 # =============================================================================
 # Figure 0b: Method 1 vs Method 2 (uses sfN data)
